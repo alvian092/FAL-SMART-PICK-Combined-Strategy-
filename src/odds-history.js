@@ -105,10 +105,33 @@ export function parseHistoricalOddsCsv(input) {
       if (!Number.isFinite(odds) || odds <= 1) throw new RangeError("odds must be decimal odds greater than 1");
       const closingOdds = record.closing_odds === undefined || record.closing_odds === "" ? null : Number(record.closing_odds);
       if (closingOdds !== null && (!Number.isFinite(closingOdds) || closingOdds <= 1)) throw new RangeError("closing_odds must be blank or decimal odds greater than 1");
+      const parseTimestamp = (value, field) => {
+        if (!value) return null;
+        const parsed = Date.parse(value);
+        if (!Number.isFinite(parsed) || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$/.test(value)) {
+          throw new RangeError(field + " must be an ISO-8601 timestamp with timezone");
+        }
+        return new Date(parsed).toISOString();
+      };
+      const kickoffUtc = parseTimestamp(record.kickoff_utc, "kickoff_utc");
+      const oddsTimestampUtc = parseTimestamp(record.odds_timestamp_utc, "odds_timestamp_utc");
+      const closingOddsTimestampUtc = parseTimestamp(record.closing_odds_timestamp_utc, "closing_odds_timestamp_utc");
+      if (closingOdds !== null && !closingOddsTimestampUtc) {
+        throw new RangeError("closing_odds_timestamp_utc is required when closing_odds is supplied");
+      }
+      if (kickoffUtc && oddsTimestampUtc && Date.parse(oddsTimestampUtc) >= Date.parse(kickoffUtc)) {
+        throw new RangeError("entry odds timestamp must be before kickoff");
+      }
+      if (closingOddsTimestampUtc && (!kickoffUtc || !oddsTimestampUtc ||
+          Date.parse(closingOddsTimestampUtc) < Date.parse(oddsTimestampUtc) ||
+          Date.parse(closingOddsTimestampUtc) > Date.parse(kickoffUtc))) {
+        throw new RangeError("closing odds timestamp must be between entry timestamp and kickoff");
+      }
       rows.push({
         date: record.date, league: record.league || "",
         homeTeam: record.home_team, awayTeam: record.away_team,
-        descriptor: descriptorFrom(record), odds, closingOdds
+        descriptor: descriptorFrom(record), odds, closingOdds,
+        kickoffUtc, oddsTimestampUtc, closingOddsTimestampUtc
       });
     } catch (error) {
       errors.push({ row: rowNumber, message: error.message });
