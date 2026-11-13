@@ -88,3 +88,36 @@ test("accepts valid double-chance, BTTS, odd-even and correct-score descriptors"
   assert.equal(result.rows.length, 4);
   assert.equal(result.errors.length, 0);
 });
+
+
+test("parses timezone-aware entry and closing timestamps and enforces pre-kickoff order", () => {
+  const timedHeader = header + ",kickoff_utc,odds_timestamp_utc,closing_odds_timestamp_utc";
+  const valid = timedHeader +
+    "\\n2025-01-01,L,A,B,1x2,home,,,,,2.1,1.9,2025-01-01T20:00:00Z,2025-01-01T12:00:00Z,2025-01-01T19:50:00Z";
+  const parsed = parseHistoricalOddsCsv(valid);
+  assert.equal(parsed.errors.length, 0);
+  assert.equal(parsed.rows[0].kickoffUtc, "2025-01-01T20:00:00.000Z");
+  assert.equal(parsed.rows[0].oddsTimestampUtc, "2025-01-01T12:00:00.000Z");
+  assert.equal(parsed.rows[0].closingOddsTimestampUtc, "2025-01-01T19:50:00.000Z");
+
+  const lateEntry = timedHeader +
+    "\\n2025-01-01,L,A,B,1x2,home,,,,,2.1,,2025-01-01T20:00:00Z,2025-01-01T20:01:00Z,";
+  const rejected = parseHistoricalOddsCsv(lateEntry);
+  assert.equal(rejected.rows.length, 0);
+  assert.match(rejected.errors[0].message, /before kickoff/i);
+});
+
+test("rejects timestamps without timezone and untimed closing prices do not create CLV timestamps", () => {
+  const timedHeader = header + ",kickoff_utc,odds_timestamp_utc,closing_odds_timestamp_utc";
+  const noZone = timedHeader +
+    "\\n2025-01-01,L,A,B,1x2,home,,,,,2.1,1.9,2025-01-01T20:00:00,2025-01-01T12:00:00Z,";
+  const rejected = parseHistoricalOddsCsv(noZone);
+  assert.equal(rejected.rows.length, 0);
+  assert.match(rejected.errors[0].message, /ISO-8601.*timezone/i);
+
+  const untimedClose = header +
+    "\\n2025-01-01,L,A,B,1x2,home,,,,,2.1,1.9";
+  const parsed = parseHistoricalOddsCsv(untimedClose);
+  assert.equal(parsed.rows.length, 1);
+  assert.equal(parsed.rows[0].closingOddsTimestampUtc, null);
+});
