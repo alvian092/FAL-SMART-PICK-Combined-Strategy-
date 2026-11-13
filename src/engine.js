@@ -157,7 +157,6 @@ export function estimateLambdas(matches, homeTeam, awayTeam, options = {}) {
     let expectedConceded = 0;
     sample.forEach(({ match }, index) => {
       const weight = recencyDecay ** index;
-      const isHome = match.homeTeam === (sample.teamName ?? "");
       // The sample carries its team name below; venue baselines follow the team's role.
       const teamIsHome = match.homeTeam === sample.teamName;
       const teamScored = teamIsHome ? match.homeGoals : match.awayGoals;
