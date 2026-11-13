@@ -61,3 +61,28 @@ test("market walk-forward validates contracts and settings", () => {
   assert.throws(() => walkForwardMarketBacktest([], [{ type: "1x2", selection: "home" }], { minTrainingMatches: 0 }), /minTrainingMatches/i);
   assert.throws(() => walkForwardMarketBacktest([], [{ type: "1x2", selection: "home" }], { oddsProvider: 3 }), /oddsProvider/i);
 });
+
+test("walk-forward evaluates every supported market family from the same historical fixtures", () => {
+  const descriptors = [
+    { type: "1x2", selection: "home" },
+    { type: "doubleChance", selection: "homeDraw" },
+    { type: "totalGoals", selection: "over", line: 2.5 },
+    { type: "teamTotal", team: "home", selection: "over", line: 1.5 },
+    { type: "handicap", team: "away", line: 0.25 },
+    { type: "btts", selection: "yes" },
+    { type: "oddEven", selection: "odd" },
+    { type: "correctScore", homeGoals: 2, awayGoals: 0 }
+  ];
+  const result = walkForwardMarketBacktest(history(), descriptors, {
+    minTrainingMatches: 10, minTeamAppearances: 5
+  });
+  assert.equal(result.markets.length, descriptors.length);
+  for (const market of result.markets) {
+    assert.equal(market.evaluated, 3);
+    assert.equal(market.missingOdds, 3);
+    assert.equal(market.settledBets, 0);
+    assert.ok(market.predictions.every((row) =>
+      row.outcomes && row.fairOdds > 1 && row.settlement === "missing_odds"
+    ));
+  }
+});
