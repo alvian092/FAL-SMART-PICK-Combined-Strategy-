@@ -232,14 +232,38 @@ export function estimateProbabilityIntervals(matches, homeTeam, awayTeam, option
   let state = seed >>> 0 || 1;
   const random = () => { state ^= state << 13; state ^= state >>> 17; state ^= state << 5; return (state >>> 0) / 4294967296; };
   const samples = { home: [], draw: [], away: [], over25: [], bttsYes: [], lambdaHome: [], lambdaAway: [] };
+  const predictiveSamples = { homeGoals: [], awayGoals: [], totalGoals: [], goalDifference: [] };
   let failedIterations = 0;
   for (let i = 0; i < iterations; i += 1) {
     const bootstrap = Array.from({ length: eligible.length }, () => eligible[Math.floor(random() * eligible.length)]);
     try {
       const lambda = estimateLambdas(bootstrap, homeTeam, awayTeam, { limit: 20, recencyDecay: 0.95, priorMatches: 5 });
-      const probabilities = matchProbabilities(dixonColesScoreMatrix(lambda.lambdaHome, lambda.lambdaAway, rho, maxGoals));
+      const matrix = dixonColesScoreMatrix(lambda.lambdaHome, lambda.lambdaAway, rho, maxGoals);
+      const probabilities = matchProbabilities(matrix);
       for (const key of ["home", "draw", "away", "over25", "bttsYes"]) samples[key].push(probabilities[key]);
       samples.lambdaHome.push(lambda.lambdaHome); samples.lambdaAway.push(lambda.lambdaAway);
+
+      // Posterior-predictive draw: propagate both historical-sample and match-outcome uncertainty.
+      const target = random();
+      let cumulative = 0;
+      let selectedHome = maxGoals;
+      let selectedAway = maxGoals;
+      let selected = false;
+      for (let h = 0; h < matrix.length && !selected; h += 1) {
+        for (let a = 0; a < matrix[h].length; a += 1) {
+          cumulative += matrix[h][a];
+          if (target <= cumulative) {
+            selectedHome = h;
+            selectedAway = a;
+            selected = true;
+            break;
+          }
+        }
+      }
+      predictiveSamples.homeGoals.push(selectedHome);
+      predictiveSamples.awayGoals.push(selectedAway);
+      predictiveSamples.totalGoals.push(selectedHome + selectedAway);
+      predictiveSamples.goalDifference.push(selectedHome - selectedAway);
     } catch { failedIterations += 1; }
   }
   const successfulIterations = samples.home.length;
@@ -251,7 +275,14 @@ export function estimateProbabilityIntervals(matches, homeTeam, awayTeam, option
     return sorted[lo] + (sorted[Math.min(lo + 1, sorted.length - 1)] - sorted[lo]) * fraction;
   };
   const intervals = Object.fromEntries(Object.entries(samples).map(([key, values]) => [key, { lower: quantile(values, alpha), upper: quantile(values, 1 - alpha), median: quantile(values, 0.5) }]));
-  return { confidenceLevel, iterations, successfulIterations, failedIterations, sampleSize: eligible.length, cutoffDate: cutoffDate || null, method: "fixture bootstrap with replacement", intervals };
+  const predictiveIntervals = Object.fromEntries(Object.entries(predictiveSamples).map(([key, values]) => [key, {
+    lower: quantile(values, alpha), upper: quantile(values, 1 - alpha), median: quantile(values, 0.5)
+  }]));
+  return {
+    confidenceLevel, iterations, successfulIterations, failedIterations, sampleSize: eligible.length,
+    cutoffDate: cutoffDate || null, method: "fixture bootstrap with replacement",
+    intervals, predictiveIntervals
+  };
 }
 
 /**
