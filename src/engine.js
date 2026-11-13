@@ -636,7 +636,7 @@ export function walkForwardBacktest(matches, options = {}) {
     rawMetrics: calculateForecastMetrics(predictions, "raw"),
     calibratedMetrics: calculateForecastMetrics(predictions, "calibrated"),
     calibrationMetrics: calculateForecastMetrics(calibratedPredictions, "calibrated"),
-    reliability: calculateReliabilityBins(predictions, "calibrated", options.calibrationBinCount ?? 10),
+    reliability: calculateReliabilityBins(calibratedPredictions, "calibrated", options.calibrationBinCount ?? 10),
     reliabilityRaw: calculateReliabilityBins(predictions, "raw", options.calibrationBinCount ?? 10),
     leagueMetrics: evaluatePerformanceByLeague(predictions),
     settings: { minTrainingMatches, minTeamAppearances, calibrationMinSamples, rho, maxGoals,
