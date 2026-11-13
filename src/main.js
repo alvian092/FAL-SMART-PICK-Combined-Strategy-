@@ -47,7 +47,7 @@ app.innerHTML = `
       <p id="error" class="error" role="alert"></p>
     </section>
     <section class="panel">
-      <div class="section-heading"><div><p class="eyebrow">02 / MODEL OUTPUT</p><h2 id="match-title">Home Team vs Away Team</h2></div><span class="tag">POISSON BASELINE</span></div>
+      <div class="section-heading"><div><p class="eyebrow">02 / MODEL OUTPUT</p><h2 id="match-title">Home Team vs Away Team</h2></div><span class="tag">POISSON + DIXON-COLES</span></div>
       <div id="probabilities" class="metric-grid"></div>
       <div id="elo-output" class="elo-output" aria-live="polite"></div>
       <p class="notice">Lambda dapat dihitung dari maksimal 20 penampilan terakhir setiap tim di semua kompetisi yang diimpor, hanya memakai pertandingan sebelum tanggal analisis. Kamu tetap bisa mengubah lambda secara manual.</p>
@@ -70,7 +70,8 @@ app.innerHTML = `
         <li class="done">Historical CSV import · validation · league/team selector · H2H</li>
         <li class="done">Automatic lambda · last 20 appearances · venue and opponent adjustment</li>
         <li class="done">Dixon-Coles low-score correction · chronological Elo ratings</li>
-        <li class="done">Temperature calibration · log-loss diagnostics</li>\n        <li class="done">Expanding walk-forward backtest · Brier score · log loss · accuracy</li>\n        <li>Reliability diagrams · calibration bins · uncertainty intervals</li>
+        <li class="done">Temperature calibration · log-loss diagnostics</li>\n        <li class="done">Expanding walk-forward backtest · Brier score · log loss · accuracy</li>\n        <li class="done">Reliability diagrams · calibration bins · per-league diagnostics</li>
+        <li>Uncertainty intervals</li>
         <li>All markets · fair odds · EV · Kelly</li>
         <li>Smart Pick ranking · walk-forward backtest</li>
         <li>Live model · Android APK release</li>
@@ -316,11 +317,11 @@ $("run-backtest").addEventListener("click", () => {
       const calOnlyLeague = league.calibrationMetrics;
       return `<tr><td>${escapeHtml(league.league)}</td><td>${league.sampleSize}</td>
         <td>${rawLeague ? metric(rawLeague.logLoss) : "—"}</td><td>${rawLeague ? metric(rawLeague.brierScore) : "—"}</td><td>${rawLeague ? percent(rawLeague.accuracy) : "—"}</td>
-        <td>${calLeague ? metric(calLeague.logLoss) : "—"}</td><td>${calLeague ? metric(calLeague.brierScore) : "—"}</td><td>${calOnlyLeague ? league.calibrationSamples : 0}</td></tr>`;
+        <td>${calLeague ? metric(calLeague.logLoss) : "—"}</td><td>${calLeague ? metric(calLeague.brierScore) : "—"}</td><td>${calOnlyLeague ? metric(calOnlyLeague.logLoss) : "—"}</td><td>${calOnlyLeague ? metric(calOnlyLeague.brierScore) : "—"}</td><td>${calOnlyLeague ? league.calibrationSamples : 0}</td></tr>`;
     }).join("");
     const leagueHtml = result.leagueMetrics.length ? `
       <div class="backtest-group"><strong>Performa per liga · prediksi out-of-sample</strong>
-        <div class="table-scroll"><table class="league-table"><thead><tr><th>Liga</th><th>n</th><th>Raw LL</th><th>Raw Brier</th><th>Raw Acc.</th><th>Cal. LL</th><th>Cal. Brier</th><th>Cal. n</th></tr></thead><tbody>${leagueRows}</tbody></table></div>
+        <div class="table-scroll"><table class="league-table"><thead><tr><th>Liga</th><th>n</th><th>Raw LL</th><th>Raw Brier</th><th>Raw Acc.</th><th>Cal. LL</th><th>Cal. Brier</th><th>Cal-only LL</th><th>Cal-only Brier</th><th>Cal. n</th></tr></thead><tbody>${leagueRows}</tbody></table></div>
         <p class="notice">Bandingkan liga dengan hati-hati: sampel kecil menghasilkan metrik yang tidak stabil. LL = log loss; nilai LL/Brier lebih rendah lebih baik.</p>
       </div>` : "";
 
