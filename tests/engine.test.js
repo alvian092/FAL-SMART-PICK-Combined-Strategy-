@@ -22,8 +22,8 @@ test("match markets are bounded and 1X2 sums to one", () => {
 
 test("fair odds and expected value use decimal odds correctly", () => {
   assert.equal(fairOdds(0.5), 2);
-  assert.equal(expectedValue(0.5, 2), 0);
-  assert.equal(expectedValue(0.6, 2), 0.2);
+  assert.ok(Math.abs(expectedValue(0.5, 2)) < 1e-12);
+  assert.ok(Math.abs(expectedValue(0.6, 2) - 0.2) < 1e-12);
 });
 
 test("no-vig probabilities sum to one", () => {
