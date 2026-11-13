@@ -1,4 +1,4 @@
-import { dixonColesScoreMatrix, matchProbabilities, fairOdds, expectedValue, estimateLambdas, estimateElo, walkForwardBacktest } from "./engine.js";
+import { dixonColesScoreMatrix, matchProbabilities, fairOdds, expectedValue, estimateLambdas, estimateElo, walkForwardBacktest, estimateProbabilityIntervals } from "./engine.js";
 import { parseHistoricalCsv, getHistoricalLeagues, getHistoricalTeams, getHeadToHead } from "./historical.js";
 import "./styles.css";
 
@@ -42,6 +42,8 @@ app.innerHTML = `
         <label>Tanggal analisis<input id="analysis-date" type="date"></label>
       </div>
       <button id="estimate-lambda" class="secondary">Hitung lambda otomatis · 20 laga</button>
+      <button id="estimate-uncertainty" class="secondary">Hitung uncertainty intervals · bootstrap</button>
+      <div id="uncertainty-output" class="uncertainty-output" aria-live="polite"></div>
       <p id="lambda-status" class="import-status" role="status">Pilih tim dan impor riwayat pertandingan untuk menghitung lambda otomatis.</p>
       <button id="analyze" class="primary">Hitung probabilitas</button>
       <p id="error" class="error" role="alert"></p>
@@ -246,6 +248,25 @@ $("estimate-lambda").addEventListener("click", () => {
   }
 });
 
+
+
+$("estimate-uncertainty").addEventListener("click", () => {
+  const button = $("estimate-uncertainty");
+  const home = $("home").value.trim(), away = $("away").value.trim(), cutoffDate = $("analysis-date").value;
+  button.disabled = true;
+  $("uncertainty-output").textContent = "Menghitung bootstrap dari data historis sebelum tanggal analisis…";
+  try {
+    if (!historicalMatches.length) throw new Error("Impor CSV historis terlebih dahulu.");
+    if (!cutoffDate) throw new Error("Isi tanggal analisis terlebih dahulu.");
+    const result = estimateProbabilityIntervals(historicalMatches, home, away, { cutoffDate, rho: Number($("rho").value), iterations: 200, confidenceLevel: 0.9 });
+    const labels = { home: "Home win", draw: "Draw", away: "Away win", over25: "Over 2.5", bttsYes: "BTTS Yes", lambdaHome: "Lambda Home", lambdaAway: "Lambda Away" };
+    $("uncertainty-output").innerHTML = `<div class="backtest-group"><strong>90% bootstrap uncertainty interval</strong>
+      <p class="notice">200 resampling dari fixture sebelum ${escapeHtml(cutoffDate)}. Ini mengukur sensitivitas model terhadap sampel historis, bukan peluang hasil atau jaminan rentang skor.</p>
+      <div class="uncertainty-grid">${Object.entries(result.intervals).map(([key, x]) => { const fmt = key.startsWith("lambda") ? num : pct; return `<article class="uncertainty-card"><small>${labels[key]}</small><strong>${fmt(x.median)}</strong><span>${fmt(x.lower)} – ${fmt(x.upper)}</span></article>`; }).join("")}</div>
+      <p class="notice">Data historis: ${result.sampleSize} · bootstrap berhasil: ${result.successfulIterations}/${result.iterations} · gagal: ${result.failedIterations}. Input sama menghasilkan hasil yang sama.</p></div>`;
+  } catch (error) { $("uncertainty-output").textContent = error.message; }
+  finally { button.disabled = false; }
+});
 
 $("run-backtest").addEventListener("click", () => {
   const button = $("run-backtest");
