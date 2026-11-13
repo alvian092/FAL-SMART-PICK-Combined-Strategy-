@@ -159,7 +159,8 @@ export function evaluateMarket(matrix, descriptor, decimalOdds) {
   }));
   const pricing = priceOutcomes(outcomes, decimalOdds);
   return { type: descriptor.type, selection: descriptor.selection ?? null, team: descriptor.team ?? null,
-    line: descriptor.line ?? null, outcomes, fairOdds: pricing.fairOdds,
+    line: descriptor.line ?? null, homeGoals: descriptor.homeGoals ?? null, awayGoals: descriptor.awayGoals ?? null,
+    outcomes, fairOdds: pricing.fairOdds,
     expectedValue: pricing.expectedValue, kellyFraction: pricing.kellyFraction };
 }
 
