@@ -208,6 +208,52 @@ export function estimateLambdas(matches, homeTeam, awayTeam, options = {}) {
 }
 
 
+
+/** Deterministic fixture-bootstrap sensitivity intervals, using only matches before cutoffDate. */
+export function estimateProbabilityIntervals(matches, homeTeam, awayTeam, options = {}) {
+  if (!Array.isArray(matches)) throw new TypeError("matches must be an array");
+  if (typeof homeTeam !== "string" || !homeTeam.trim() || typeof awayTeam !== "string" || !awayTeam.trim() || homeTeam === awayTeam) throw new TypeError("choose two different valid team names");
+  const cutoffDate = options.cutoffDate ?? "";
+  const iterations = options.iterations ?? 200;
+  const confidenceLevel = options.confidenceLevel ?? 0.9;
+  const rho = options.rho ?? -0.08;
+  const maxGoals = options.maxGoals ?? 12;
+  if (cutoffDate && !validIsoDate(cutoffDate)) throw new TypeError("cutoffDate must use YYYY-MM-DD");
+  if (!Number.isInteger(iterations) || iterations < 50 || iterations > 1000) throw new RangeError("iterations must be an integer from 50 to 1000");
+  if (!Number.isFinite(confidenceLevel) || confidenceLevel <= 0.5 || confidenceLevel >= 1) throw new RangeError("confidenceLevel must be between 0.5 and 1");
+  if (!Number.isFinite(rho) || rho < -1 || rho > 1) throw new RangeError("rho must be between -1 and 1");
+  if (!Number.isInteger(maxGoals) || maxGoals < 1 || maxGoals > 20) throw new RangeError("maxGoals must be from 1 to 20");
+  const eligible = matches.filter((m) => m && validIsoDate(m.date) && Number.isInteger(m.homeGoals) && m.homeGoals >= 0 && Number.isInteger(m.awayGoals) && m.awayGoals >= 0 && typeof m.homeTeam === "string" && typeof m.awayTeam === "string" && (!cutoffDate || m.date < cutoffDate));
+  if (eligible.length < 10) throw new RangeError("at least 10 historical fixtures before the analysis date are required");
+  for (const team of [homeTeam, awayTeam]) if (eligible.filter((m) => m.homeTeam === team || m.awayTeam === team).length < 5) throw new RangeError("at least 5 prior appearances per team are required for bootstrap intervals");
+  let seed = options.seed;
+  if (seed === undefined) seed = [...`${homeTeam}|${awayTeam}|${cutoffDate}`].reduce((v, ch) => Math.imul(v ^ ch.charCodeAt(0), 16777619) >>> 0, 2166136261);
+  if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) throw new RangeError("seed must be an unsigned 32-bit integer");
+  let state = seed >>> 0 || 1;
+  const random = () => { state ^= state << 13; state ^= state >>> 17; state ^= state << 5; return (state >>> 0) / 4294967296; };
+  const samples = { home: [], draw: [], away: [], over25: [], bttsYes: [], lambdaHome: [], lambdaAway: [] };
+  let failedIterations = 0;
+  for (let i = 0; i < iterations; i += 1) {
+    const bootstrap = Array.from({ length: eligible.length }, () => eligible[Math.floor(random() * eligible.length)]);
+    try {
+      const lambda = estimateLambdas(bootstrap, homeTeam, awayTeam, { limit: 20, recencyDecay: 0.95, priorMatches: 5 });
+      const probabilities = matchProbabilities(dixonColesScoreMatrix(lambda.lambdaHome, lambda.lambdaAway, rho, maxGoals));
+      for (const key of ["home", "draw", "away", "over25", "bttsYes"]) samples[key].push(probabilities[key]);
+      samples.lambdaHome.push(lambda.lambdaHome); samples.lambdaAway.push(lambda.lambdaAway);
+    } catch { failedIterations += 1; }
+  }
+  const successfulIterations = samples.home.length;
+  if (successfulIterations < Math.max(30, Math.ceil(iterations * 0.7))) throw new RangeError("too few valid bootstrap samples; import more history for both teams");
+  const alpha = (1 - confidenceLevel) / 2;
+  const quantile = (values, q) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    const pos = (sorted.length - 1) * q, lo = Math.floor(pos), fraction = pos - lo;
+    return sorted[lo] + (sorted[Math.min(lo + 1, sorted.length - 1)] - sorted[lo]) * fraction;
+  };
+  const intervals = Object.fromEntries(Object.entries(samples).map(([key, values]) => [key, { lower: quantile(values, alpha), upper: quantile(values, 1 - alpha), median: quantile(values, 0.5) }]));
+  return { confidenceLevel, iterations, successfulIterations, failedIterations, sampleSize: eligible.length, cutoffDate: cutoffDate || null, method: "fixture bootstrap with replacement", intervals };
+}
+
 /**
  * Apply the Dixon-Coles low-score correction to an independent Poisson matrix.
  * rho=0 is the independent-Poisson baseline. Corrected truncated matrices are
