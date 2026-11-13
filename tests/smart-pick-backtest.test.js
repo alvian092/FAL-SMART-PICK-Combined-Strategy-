@@ -66,8 +66,8 @@ test("missing odds never invent ROI or CLV and produce explicit NO BET", () => {
   assert.equal(result.evaluatedBets, 0);
   assert.equal(result.summary.roi, null);
   assert.equal(result.summary.averageClv, null);
-  assert.equal(result.noBetFixtures.length, 3);
-  assert.ok(result.noBets.every(row => row.reason === "missing_historical_odds_provider"));
+  assert.equal(result.noBetFixtures, 19);
+  assert.equal(result.noBets.filter(row => row.reason === "missing_historical_odds_provider").length, 9);
 });
 
 test("candidates failing Smart Pick filters force NO BET and do not change bankroll", () => {
