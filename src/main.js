@@ -2,6 +2,7 @@ import { dixonColesScoreMatrix, matchProbabilities, fairOdds, expectedValue, est
 import { parseHistoricalCsv, getHistoricalLeagues, getHistoricalTeams, getHeadToHead } from "./historical.js";
 import { evaluateAllMarkets, evaluateMarket } from "./markets.js";
 import { walkForwardMarketBacktest } from "./market-backtest.js";
+import { rankSmartPicks } from "./smart-pick.js";
 import "./styles.css";
 
 const app = document.querySelector("#app");
@@ -72,6 +73,20 @@ app.innerHTML = `
       <div id="market-status" class="import-status" role="status">Hitung probabilitas pertandingan untuk menampilkan seluruh pasar.</div>
       <div id="market-output" class="table-scroll"></div>
     </section>
+    <section class="panel smart-pick-panel">
+      <div class="section-heading"><div><p class="eyebrow">05 / SMART PICK</p><h2>Combined Strategy · NO BET</h2></div><span class="tag">RISK FILTER</span></div>
+      <p class="muted compact">Gunakan odds manual yang sudah diisi pada tabel All Markets. Kandidat diurutkan berdasarkan EV, lalu probabilitas hasil positif. Jika tidak ada yang lolos seluruh filter, sistem wajib mengeluarkan NO BET.</p>
+      <div class="fields">
+        <label>Probabilitas positif minimum (%)<input id="smart-min-prob" type="number" min="0" max="100" step="1" value="40"></label>
+        <label>EV minimum (%)<input id="smart-min-ev" type="number" step="0.5" value="2"></label>
+        <label>Fractional Kelly (%)<input id="smart-fractional-kelly" type="number" min="0" max="100" step="5" value="25"></label>
+        <label>Batas stake / bankroll (%)<input id="smart-max-stake" type="number" min="0" max="100" step="0.25" value="2"></label>
+        <label>Odds maksimum<input id="smart-max-odds" type="number" min="1.01" step="0.1" value="20"></label>
+      </div>
+      <button id="run-smart-pick" class="primary">Jalankan Smart Pick</button>
+      <p id="smart-pick-status" class="import-status" role="status">Isi odds pada kandidat All Markets, lalu jalankan Smart Pick.</p>
+      <div id="smart-pick-output" class="backtest-output" aria-live="polite"></div>
+    </section>
     <section class="panel market-backtest-panel">
       <div class="section-heading"><div><p class="eyebrow">06 / MARKET VALIDATION</p><h2>All Markets walk-forward</h2></div><span class="tag">OUT OF SAMPLE</span></div>
       <p class="muted compact">Uji seluruh keluarga market dengan data yang tersedia sebelum tanggal pertandingan. CSV skor tidak berisi odds historis, jadi hasil awal menilai prediksi dan settlement aktual tanpa mengarang ROI. ROI hanya dihitung bila odds historis asli tersedia.</p>
@@ -95,7 +110,7 @@ app.innerHTML = `
         <li>Uncertainty intervals · posterior-predictive score ranges · walk-forward coverage validation</li>
         <li class="done">All markets · fair odds · EV · Kelly · settlement tests</li>
         <li>All-market walk-forward validation · historical odds ROI/P&amp;L</li>
-        <li>Smart Pick ranking · walk-forward backtest</li>
+        <li class="done">Smart Pick ranking · EV/probability gates · fractional Kelly risk cap · mandatory NO BET</li>\n        <li>Smart Pick walk-forward backtest · calibration · ROI/CLV</li>
         <li>Live model · Android APK release</li>
       </ul>
     </section>
@@ -560,6 +575,61 @@ $("market-output").addEventListener("input", (event) => {
     row.querySelector('[data-field="pl"]').textContent = "—";
     row.querySelector('[data-field="kelly"]').textContent = "—";
     (input.classList.contains("market-odds") ? oddsInput : stakeInput).setCustomValidity(error.message);
+  }
+});
+
+
+$("run-smart-pick").addEventListener("click", () => {
+  const button = $("run-smart-pick");
+  button.disabled = true;
+  $("smart-pick-status").textContent = "Mengevaluasi kandidat ber-odds dan menerapkan batas risiko…";
+  $("smart-pick-output").replaceChildren();
+  try {
+    if (!lastMarketMatrix) throw new Error("Hitung probabilitas pertandingan terlebih dahulu.");
+    const candidates = [...$("market-output").querySelectorAll("tr[data-market-row]")].map((row, index) => {
+      const odds = row.querySelector(".market-odds").value.trim();
+      return {
+        id: "market-" + (index + 1),
+        descriptor: JSON.parse(row.querySelector(".market-odds").dataset.descriptor),
+        odds: odds === "" ? null : Number(odds)
+      };
+    });
+    const values = {
+      minProbability: Number($("smart-min-prob").value) / 100,
+      minExpectedValue: Number($("smart-min-ev").value) / 100,
+      fractionalKelly: Number($("smart-fractional-kelly").value) / 100,
+      maxStakeFraction: Number($("smart-max-stake").value) / 100,
+      maxOdds: Number($("smart-max-odds").value)
+    };
+    const result = rankSmartPicks(lastMarketMatrix, candidates, values);
+    const label = (d) => {
+      const family = ({ "1x2": "1X2", doubleChance: "Double Chance", totalGoals: "Total Goals",
+        teamTotal: "Team Total " + d.team, handicap: "Asian Handicap " + d.team,
+        btts: "BTTS", oddEven: "Odd/Even", correctScore: "Correct Score" })[d.type] || d.type;
+      const selection = d.type === "correctScore" ? d.homeGoals + "–" + d.awayGoals :
+        d.type === "handicap" ? (d.line > 0 ? "+" : "") + d.line : (d.selection || "");
+      return family + " " + selection + (d.line !== undefined && d.type !== "handicap" ? " " + d.line : "");
+    };
+    const rows = result.ranked.map((pick) => "<tr><td>" + pick.rank + "</td><td>" +
+      escapeHtml(label(pick.descriptor)) + "</td><td>" + num(pick.odds) + "</td><td>" +
+      pct(pick.expectedValue) + "</td><td>" + pct(pick.probability) + "</td><td>" +
+      pct(pick.nonLossProbability) + "</td><td>" + pct(pick.kellyFraction) + "</td><td>" +
+      pct(pick.stakeFraction) + "</td><td>" + escapeHtml(pick.explanation.join(" · ")) + "</td></tr>").join("");
+    const best = result.best;
+    $("smart-pick-status").textContent = result.status === "BET"
+      ? "Selesai · " + result.ranked.length + " kandidat lolos · kandidat terbaik: " + label(best.descriptor) + "."
+      : "NO BET · " + result.rejected.length + " kandidat diperiksa · tidak ada yang lolos seluruh filter.";
+    $("smart-pick-output").innerHTML =
+      "<div class=\"backtest-group\"><strong>" + result.status.replace("_", " ") + "</strong><p class=\"notice\">" +
+      escapeHtml(result.reason) + " EV adalah expected net return per unit stake. Probabilitas positif menghitung hasil settlement dengan profit di atas nol; stake adalah persentase bankroll setelah fractional Kelly dan hard cap.</p></div>" +
+      (best ? "<div class=\"backtest-group\"><strong>Alasan kandidat teratas</strong><p>" +
+        escapeHtml(best.explanation.join(" · ")) + "</p><p class=\"notice\">Stake yang ditampilkan adalah batas model, bukan instruksi mempertaruhkan seluruh bankroll. Risiko model dan kualitas odds tetap perlu diperiksa.</p></div>" : "") +
+      (rows ? "<div class=\"table-scroll\"><table class=\"league-table\"><thead><tr><th>Rank</th><th>Market</th><th>Odds</th><th>EV</th><th>Prob. positif</th><th>Non-loss</th><th>Full Kelly</th><th>Stake cap</th><th>Alasan</th></tr></thead><tbody>" + rows + "</tbody></table></div>" : "") +
+      "<p class=\"notice\">Kandidat ditolak: " + result.rejected.length + ". Kandidat tanpa odds tidak dapat dipilih. Ranking tidak menghilangkan korelasi antar-market pada pertandingan yang sama.</p>";
+  } catch (error) {
+    $("smart-pick-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
   }
 });
 
