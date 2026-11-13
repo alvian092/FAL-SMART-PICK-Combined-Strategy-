@@ -15,6 +15,7 @@ An Android-first Football Analytics Lab project. This repository starts with a s
 - Multiclass temperature scaling for 1X2 probabilities, fitted by minimizing log loss on prior out-of-sample predictions.
 - Expanding-window walk-forward backtesting with strict calendar-date separation, per-team history gates, skipped-fixture reporting, raw/calibrated log loss, multiclass Brier score, and accuracy.
 - One-vs-rest 1X2 reliability diagrams and 10-bin calibration tables with ECE/MCE diagnostics.
+- Deterministic fixture-bootstrap sensitivity intervals for 1X2, Over 2.5, BTTS Yes, and team lambdas, using only pre-match history.
 - Out-of-sample per-league scorecards for raw and calibrated log loss, Brier score, accuracy, and sample counts.
 - Node.js unit tests.
 - GitHub Actions workflow that tests, builds the web bundle, generates the Android project, assembles a Debug APK, verifies it exists, and uploads it as an artifact.
