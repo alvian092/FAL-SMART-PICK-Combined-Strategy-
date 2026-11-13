@@ -3,6 +3,8 @@ import { parseHistoricalCsv, getHistoricalLeagues, getHistoricalTeams, getHeadTo
 import { evaluateAllMarkets, evaluateMarket } from "./markets.js";
 import { walkForwardMarketBacktest } from "./market-backtest.js";
 import { rankSmartPicks } from "./smart-pick.js";
+import { walkForwardSmartPickBacktest } from "./smart-pick-backtest.js";
+import { parseHistoricalOddsCsv } from "./odds-history.js";
 import "./styles.css";
 
 const app = document.querySelector("#app");
@@ -87,6 +89,23 @@ app.innerHTML = `
       <p id="smart-pick-status" class="import-status" role="status">Isi odds pada kandidat All Markets, lalu jalankan Smart Pick.</p>
       <div id="smart-pick-output" class="backtest-output" aria-live="polite"></div>
     </section>
+    <section class="panel smart-pick-backtest-panel">
+      <div class="section-heading"><div><p class="eyebrow">07 / SMART PICK VALIDATION</p><h2>Walk-forward · ROI · CLV · Drawdown</h2></div><span class="tag">HISTORICAL ODDS</span></div>
+      <p class="muted compact">Impor odds historis saat entry dan odds penutupan untuk market yang sama. Model hanya memakai pertandingan sebelum tanggal fixture. Satu kandidat terbaik dipilih per pertandingan; bila tidak lolos filter hasilnya NO BET.</p>
+      <label class="file-label">Pilih CSV odds historis<input id="smart-odds-file" type="file" accept=".csv,text/csv"></label>
+      <p id="smart-odds-status" class="import-status" role="status">Belum ada odds historis diimpor. CSV wajib memuat date, home_team, away_team, market, selection, odds; closing_odds opsional.</p>
+      <div class="fields">
+        <label>Bankroll awal<input id="smart-backtest-bankroll" type="number" min="1" step="any" value="1000"></label>
+        <label>Minimum pertandingan latihan<input id="smart-backtest-min" type="number" min="10" max="500" step="1" value="30"></label>
+        <label>Probabilitas positif minimum (%)<input id="smart-backtest-prob" type="number" min="0" max="100" step="1" value="40"></label>
+        <label>EV minimum (%)<input id="smart-backtest-ev" type="number" step="0.5" value="2"></label>
+        <label>Fractional Kelly (%)<input id="smart-backtest-kelly" type="number" min="0" max="100" step="5" value="25"></label>
+        <label>Batas stake (%)<input id="smart-backtest-cap" type="number" min="0" max="5" step="0.25" value="2"></label>
+      </div>
+      <button id="run-smart-backtest" class="primary">Jalankan Smart Pick Walk-Forward</button>
+      <p id="smart-backtest-status" class="import-status" role="status">Menunggu database pertandingan dan odds historis.</p>
+      <div id="smart-backtest-output" class="backtest-output" aria-live="polite"></div>
+    </section>
     <section class="panel market-backtest-panel">
       <div class="section-heading"><div><p class="eyebrow">06 / MARKET VALIDATION</p><h2>All Markets walk-forward</h2></div><span class="tag">OUT OF SAMPLE</span></div>
       <p class="muted compact">Uji seluruh keluarga market dengan data yang tersedia sebelum tanggal pertandingan. CSV skor tidak berisi odds historis, jadi hasil awal menilai prediksi dan settlement aktual tanpa mengarang ROI. ROI hanya dihitung bila odds historis asli tersedia.</p>
@@ -126,7 +145,15 @@ const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
 })[char]);
 
 let historicalMatches = [];
+let historicalOdds = [];
 let importErrors = [];
+
+try {
+  const savedOdds = JSON.parse(localStorage.getItem("fal-historical-odds") || "[]");
+  if (Array.isArray(savedOdds)) historicalOdds = savedOdds;
+} catch {
+  historicalOdds = [];
+}
 
 try {
   const saved = JSON.parse(localStorage.getItem("fal-historical-matches") || "[]");
@@ -512,6 +539,84 @@ $("run-market-backtest").addEventListener("click", () => {
       rows + "</tbody></table></div></div>";
   } catch (error) {
     $("market-backtest-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$("smart-odds-file").addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  $("smart-odds-status").textContent = "Membaca odds historis…";
+  try {
+    const result = parseHistoricalOddsCsv(await file.text());
+    historicalOdds = result.rows;
+    localStorage.setItem("fal-historical-odds", JSON.stringify(historicalOdds));
+    $("smart-odds-status").textContent = historicalOdds.length + " odds valid · " + result.errors.length + " baris ditolak.";
+    if (result.errors.length) {
+      $("smart-odds-status").textContent += " Contoh error: " + result.errors.slice(0, 4).map(item => "baris " + item.row + ": " + item.message).join(" | ");
+    }
+  } catch (error) {
+    $("smart-odds-status").textContent = error.message;
+  }
+});
+
+$("run-smart-backtest").addEventListener("click", () => {
+  const button = $("run-smart-backtest");
+  button.disabled = true;
+  $("smart-backtest-status").textContent = "Menjalankan prediksi kronologis dan settlement historis…";
+  $("smart-backtest-output").replaceChildren();
+  try {
+    if (!historicalMatches.length) throw new Error("Impor CSV hasil pertandingan terlebih dahulu.");
+    if (!historicalOdds.length) throw new Error("Impor CSV odds historis yang berisi odds entry. Untuk CLV, sertakan closing_odds.");
+    const pickOptions = {
+      minProbability: Number($("smart-backtest-prob").value) / 100,
+      minExpectedValue: Number($("smart-backtest-ev").value) / 100,
+      fractionalKelly: Number($("smart-backtest-kelly").value) / 100,
+      maxStakeFraction: Number($("smart-backtest-cap").value) / 100
+    };
+    const result = walkForwardSmartPickBacktest(historicalMatches, {
+      initialBankroll: Number($("smart-backtest-bankroll").value),
+      minTrainingMatches: Number($("smart-backtest-min").value),
+      minTeamAppearances: 5,
+      pickOptions,
+      candidateProvider: (fixture) => historicalOdds.filter(row =>
+        row.date === fixture.date && row.homeTeam === fixture.homeTeam &&
+        row.awayTeam === fixture.awayTeam && (!row.league || !fixture.league || row.league === fixture.league)
+      ).map((row, index) => ({
+        id: "historical-" + index,
+        descriptor: row.descriptor,
+        odds: row.odds,
+        closingOdds: row.closingOdds
+      }))
+    });
+    const s = result.summary;
+    const metric = (value) => value === null || value === undefined ? "—" : pct(value);
+    const money = (value) => Number(value).toFixed(2);
+    const betRows = result.bets.map(bet => {
+      const d = bet.descriptor;
+      const market = d.type + (d.selection ? " " + d.selection : "") +
+        (d.team ? " " + d.team : "") + (d.line !== undefined ? " " + d.line : "") +
+        (d.type === "correctScore" ? " " + d.homeGoals + "–" + d.awayGoals : "");
+      return "<tr><td>" + escapeHtml(bet.date) + "</td><td>" + escapeHtml(bet.homeTeam + " vs " + bet.awayTeam) +
+        "</td><td>" + escapeHtml(market) + "</td><td>" + money(bet.odds) + "</td><td>" +
+        (bet.closingOdds === null ? "—" : money(bet.closingOdds)) + "</td><td>" + metric(bet.clv) +
+        "</td><td>" + escapeHtml(bet.outcome) + "</td><td>" + money(bet.stake) + "</td><td>" +
+        money(bet.profit) + "</td><td>" + money(bet.bankrollAfter) + "</td></tr>";
+    }).join("");
+    $("smart-backtest-status").textContent = "Selesai · " + result.evaluatedBets + " taruhan · " + result.noBetFixtures + " NO BET / skipped.";
+    $("smart-backtest-output").innerHTML =
+      "<div class=\"metric-grid\">" +
+      [["Taruhan", s.bets], ["Turnover", money(s.totalStake)], ["Net P/L", money(s.netProfit)],
+       ["ROI", metric(s.roi)], ["Rata-rata CLV", metric(s.averageClv)], ["Max drawdown", metric(s.maxDrawdown)],
+       ["Bankroll akhir", money(s.finalBankroll)], ["Bankroll return", metric(s.bankrollReturn)],
+       ["CLV sample", s.clvBets]].map(([label,value]) => "<div class=\"metric\"><span>" + label +
+       "</span><strong>" + value + "</strong></div>").join("") + "</div>" +
+      "<p class=\"notice\">ROI = net profit / total stake. CLV = (odds entry / closing odds) − 1, berbobot stake; hanya dihitung jika closing_odds tersedia. Max drawdown diukur dari puncak bankroll ke titik terendah berikutnya. Satu taruhan maksimum per fixture.</p>" +
+      (betRows ? "<div class=\"table-scroll\"><table class=\"league-table\"><thead><tr><th>Tanggal</th><th>Pertandingan</th><th>Market</th><th>Entry</th><th>Closing</th><th>CLV</th><th>Settlement</th><th>Stake</th><th>Net P/L</th><th>Bankroll</th></tr></thead><tbody>" + betRows + "</tbody></table></div>" : "<p class=\"notice\">NO BET: tidak ada kandidat yang memenuhi syarat atau belum cukup data/odds.</p>") +
+      "<p class=\"notice\">NO BET / skipped: " + result.noBetFixtures + ". Riwayat bankroll berisi " + result.equityCurve.length + " titik settlement.</p>";
+  } catch (error) {
+    $("smart-backtest-status").textContent = error.message;
   } finally {
     button.disabled = false;
   }
