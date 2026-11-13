@@ -31,12 +31,12 @@ test("Smart Pick walk-forward settles one best eligible candidate per fixture an
     minTrainingMatches: 10, minTeamAppearances: 5, initialBankroll: 1000,
     pickOptions: permissive, candidateProvider: () => odds()
   });
-  assert.equal(result.evaluatedBets, 3);
-  assert.equal(result.summary.bets, 3);
+  assert.equal(result.evaluatedBets, 9);
+  assert.equal(result.summary.bets, 9);
   assert.ok(result.bets.every((bet) => bet.stake > 0 && bet.stake <= 20));
   assert.equal(result.summary.totalStake, result.bets.reduce((sum, bet) => sum + bet.stake, 0));
   assert.ok(Math.abs(result.summary.roi - result.summary.netProfit / result.summary.totalStake) < 1e-12);
-  assert.equal(result.summary.clvBets, 3);
+  assert.equal(result.summary.clvBets, 9);
   assert.ok(result.summary.averageClv > 0);
   assert.ok(result.summary.maxDrawdown >= 0 && result.summary.maxDrawdown <= 1);
   assert.equal(result.equityCurve.length, 3);
@@ -51,8 +51,8 @@ test("walk-forward excludes same-day/future results from candidate decision hist
       return odds();
     }
   });
-  assert.deepEqual(seen.map(row => row.trainingMatches), [16, 17, 18]);
-  assert.deepEqual(seen.map(row => row.date), ["2025-01-17", "2025-01-18", "2025-01-19"]);
+  assert.deepEqual(seen.map(row => row.trainingMatches), [10, 11, 12, 13, 14, 15, 16, 17, 18]);
+  assert.deepEqual(seen.map(row => row.date), Array.from({ length: 9 }, (_, i) => `2025-01-${String(i + 11).padStart(2, "0")}`));
 });
 
 test("missing odds never invent ROI or CLV and produce explicit NO BET", () => {
@@ -70,7 +70,7 @@ test("candidates failing Smart Pick filters force NO BET and do not change bankr
   const result = walkForwardSmartPickBacktest(history(), {
     minTrainingMatches: 10, minTeamAppearances: 5,
     candidateProvider: () => [{ descriptor: { type: "1x2", selection: "home" }, odds: 1.01 }],
-    pickOptions: { minProbability: 0.99, minExpectedValue: 0.5 }
+    pickOptions: { minProbability: 0.99, minExpectedValue: 100 }
   });
   assert.equal(result.evaluatedBets, 0);
   assert.equal(result.summary.finalBankroll, 1000);
@@ -85,7 +85,7 @@ test("CLV is null when closing price is absent; fixed stake cannot exceed bankro
   });
   assert.equal(result.summary.clvBets, 0);
   assert.equal(result.summary.averageClv, null);
-  assert.equal(result.bets.length, 3);
+  assert.equal(result.bets.length, 9);
   assert.ok(result.bets.every(row => row.clv === null));
 });
 
