@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   applyTemperatureScaling,
   fitTemperatureScaling,
-  walkForwardBacktest
+  walkForwardBacktest,
+  calculateReliabilityBins,
+  evaluatePerformanceByLeague
 } from "../src/engine.js";
 
 const close = (a, b, tolerance = 1e-10) => assert.ok(Math.abs(a - b) <= tolerance, `${a} is not close to ${b}`);
@@ -88,4 +90,39 @@ test("walk-forward rejects invalid settings and never invents predictions for em
   assert.equal(empty.evaluated, 0);
   assert.equal(empty.skippedCount, 0);
   assert.equal(empty.rawMetrics, null);
+});
+
+test("reliability bins report observed frequency, ECE and MCE for all 1X2 outcomes", () => {
+  const rows = [
+    { raw: { home: 0.8, draw: 0.1, away: 0.1 }, calibrated: { home: 0.8, draw: 0.1, away: 0.1 }, actual: "home" },
+    { raw: { home: 0.7, draw: 0.2, away: 0.1 }, calibrated: { home: 0.7, draw: 0.2, away: 0.1 }, actual: "draw" },
+    { raw: { home: 0.2, draw: 0.6, away: 0.2 }, calibrated: { home: 0.2, draw: 0.6, away: 0.2 }, actual: "away" }
+  ];
+  const result = calculateReliabilityBins(rows, "raw", 5);
+  assert.deepEqual(Object.keys(result), ["home", "draw", "away"]);
+  assert.equal(result.home.sampleSize, 3);
+  assert.equal(result.home.bins.length, 5);
+  assert.ok(result.home.expectedCalibrationError >= 0 && result.home.expectedCalibrationError <= 1);
+  assert.ok(result.home.maximumCalibrationError >= 0 && result.home.maximumCalibrationError <= 1);
+  assert.equal(result.home.bins[3].count, 1);
+  assert.equal(result.home.bins[3].observedRate, 1);
+  assert.throws(() => calculateReliabilityBins(rows, "unknown", 5), /probabilityKey/i);
+  assert.throws(() => calculateReliabilityBins(rows, "raw", 1), /binCount/i);
+});
+
+test("per-league evaluation preserves separate out-of-sample scorecards and calibration sample counts", () => {
+  const rows = [
+    { league: "League B", actual: "home", raw: { home: 0.7, draw: 0.2, away: 0.1 }, calibrated: { home: 0.6, draw: 0.25, away: 0.15 }, calibrationStatus: "warming_up" },
+    { league: "League A", actual: "draw", raw: { home: 0.2, draw: 0.6, away: 0.2 }, calibrated: { home: 0.2, draw: 0.6, away: 0.2 }, calibrationStatus: "fitted_on_prior_forecasts" },
+    { league: "League A", actual: "away", raw: { home: 0.2, draw: 0.2, away: 0.6 }, calibrated: { home: 0.2, draw: 0.2, away: 0.6 }, calibrationStatus: "fitted_on_prior_forecasts" }
+  ];
+  const result = evaluatePerformanceByLeague(rows);
+  assert.deepEqual(result.map((item) => item.league), ["League A", "League B"]);
+  assert.equal(result[0].sampleSize, 2);
+  assert.equal(result[0].calibrationSamples, 2);
+  assert.equal(result[0].calibrationMetrics.sampleSize, 2);
+  assert.equal(result[1].calibrationSamples, 0);
+  assert.equal(result[1].calibrationMetrics, null);
+  assert.equal(result[1].rawMetrics.sampleSize, 1);
+  assert.throws(() => evaluatePerformanceByLeague(null), /array/i);
 });
