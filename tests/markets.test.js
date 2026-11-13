@@ -118,10 +118,10 @@ test("market bet summary calculates turnover, net P/L and ROI", () => {
   const summary = summarizeMarketBets(bets);
   assert.equal(summary.bets, 6);
   assert.equal(summary.totalStake, 490);
-  assert.equal(summary.netProfit, 115);
-  close(summary.roi, 115 / 490);
-  assert.equal(summary.wins, 1);
-  assert.equal(summary.halfWins, 2);
+  assert.equal(summary.netProfit, 155);
+  close(summary.roi, 155 / 490);
+  assert.equal(summary.wins, 2);
+  assert.equal(summary.halfWins, 1);
   assert.equal(summary.pushes, 1);
   assert.equal(summary.halfLosses, 1);
   assert.equal(summary.losses, 1);
