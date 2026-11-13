@@ -1,6 +1,7 @@
 import { dixonColesScoreMatrix, matchProbabilities, fairOdds, expectedValue, estimateLambdas, estimateElo, walkForwardBacktest, estimateProbabilityIntervals, walkForwardPredictiveIntervalBacktest } from "./engine.js";
 import { parseHistoricalCsv, getHistoricalLeagues, getHistoricalTeams, getHeadToHead } from "./historical.js";
 import { evaluateAllMarkets, evaluateMarket } from "./markets.js";
+import { walkForwardMarketBacktest } from "./market-backtest.js";
 import "./styles.css";
 
 const app = document.querySelector("#app");
@@ -71,6 +72,14 @@ app.innerHTML = `
       <div id="market-status" class="import-status" role="status">Hitung probabilitas pertandingan untuk menampilkan seluruh pasar.</div>
       <div id="market-output" class="table-scroll"></div>
     </section>
+    <section class="panel market-backtest-panel">
+      <div class="section-heading"><div><p class="eyebrow">06 / MARKET VALIDATION</p><h2>All Markets walk-forward</h2></div><span class="tag">OUT OF SAMPLE</span></div>
+      <p class="muted compact">Uji seluruh keluarga market dengan data yang tersedia sebelum tanggal pertandingan. CSV skor tidak berisi odds historis, jadi hasil awal menilai prediksi dan settlement aktual tanpa mengarang ROI. ROI hanya dihitung bila odds historis asli tersedia.</p>
+      <label>Minimum pertandingan latihan<input id="market-backtest-min" type="number" min="10" max="500" step="1" value="30"></label>
+      <button id="run-market-backtest" class="secondary">Jalankan backtest seluruh market</button>
+      <p id="market-backtest-status" class="import-status" role="status">Menunggu database CSV.</p>
+      <div id="market-backtest-output" class="backtest-output"></div>
+    </section>
     <section class="panel backtest-panel">\n      <div class="section-heading"><div><p class="eyebrow">05 / MODEL VALIDATION</p><h2>Walk-forward backtest</h2></div><span class="tag">TIME ORDERED</span></div>\n      <p class="muted compact">Uji prediksi historis secara kronologis. Setiap pertandingan hanya diprediksi memakai data dari tanggal sebelumnya; kalibrasi hanya memakai prediksi out-of-sample yang lebih lama. Pertandingan yang datanya belum cukup akan dilewati dan dilaporkan.</p>\n      <button id="run-backtest" class="secondary">Jalankan walk-forward backtest</button>
       <button id="run-interval-backtest" class="secondary">Uji coverage uncertainty intervals</button>
       <p id="interval-backtest-status" class="import-status" role="status">Uji rentang skor prediktif terhadap hasil historis out-of-sample.</p>
@@ -84,7 +93,8 @@ app.innerHTML = `
         <li class="done">Dixon-Coles low-score correction · chronological Elo ratings</li>
         <li class="done">Temperature calibration · log-loss diagnostics</li>\n        <li class="done">Expanding walk-forward backtest · Brier score · log loss · accuracy</li>\n        <li class="done">Reliability diagrams · calibration bins · per-league diagnostics</li>
         <li>Uncertainty intervals · posterior-predictive score ranges · walk-forward coverage validation</li>
-        <li>All markets · fair odds · EV · Kelly</li>
+        <li class="done">All markets · fair odds · EV · Kelly · settlement tests</li>
+        <li>All-market walk-forward validation · historical odds ROI/P&amp;L</li>
         <li>Smart Pick ranking · walk-forward backtest</li>
         <li>Live model · Android APK release</li>
       </ul>
@@ -435,6 +445,62 @@ $("run-backtest").addEventListener("click", () => {
   }
 });
 
+
+
+$("run-market-backtest").addEventListener("click", () => {
+  const button = $("run-market-backtest");
+  button.disabled = true;
+  $("market-backtest-status").textContent = "Menguji seluruh market secara kronologis…";
+  $("market-backtest-output").replaceChildren();
+  try {
+    if (!historicalMatches.length) throw new Error("Impor CSV historis terlebih dahulu.");
+    const minTrainingMatches = Number($("market-backtest-min").value);
+    if (!Number.isInteger(minTrainingMatches) || minTrainingMatches < 10 || minTrainingMatches > 500) {
+      throw new Error("Minimum pertandingan latihan harus 10–500.");
+    }
+    const descriptorSource = evaluateAllMarkets(dixonColesScoreMatrix(
+      Number($("lh").value), Number($("la").value), Number($("rho").value), 12
+    ));
+    const descriptors = descriptorSource.map((market, index) => ({
+      id: "market-" + (index + 1), type: market.type, selection: market.selection,
+      team: market.team, line: market.line, homeGoals: market.homeGoals, awayGoals: market.awayGoals
+    }));
+    const result = walkForwardMarketBacktest(historicalMatches, descriptors, {
+      minTrainingMatches, minTeamAppearances: 5, rho: Number($("rho").value), maxGoals: 12
+    });
+    const rows = result.markets.map((market) => {
+      const d = market.descriptor;
+      const name = ({ "1x2": "1X2", doubleChance: "Double chance", totalGoals: "Total goals",
+        teamTotal: "Team total " + d.team, handicap: "Asian handicap " + d.team,
+        btts: "BTTS", oddEven: "Odd/even", correctScore: "Correct score" })[d.type];
+      const pick = d.type === "correctScore" ? d.homeGoals + "–" + d.awayGoals :
+        (d.selection || d.team || "—").toString();
+      const line = d.line === undefined ? "—" : Number(d.line).toFixed(2);
+      const settled = market.summary;
+      return "<tr><td>" + name + "</td><td>" + pick + "</td><td>" + line +
+        "</td><td>" + market.evaluated + "</td><td>" + market.skipped.length +
+        "</td><td>" + market.missingOdds + "</td><td>" + settled.bets +
+        "</td><td>" + (settled.roi === null ? "—" : pct(settled.roi)) +
+        "</td><td>" + (settled.netProfit === 0 && settled.bets === 0 ? "—" : num(settled.netProfit)) +
+        "</td></tr>";
+    }).join("");
+    const evaluated = result.markets.reduce((sum, market) => sum + market.evaluated, 0);
+    const skipped = result.markets.reduce((sum, market) => sum + market.skipped.length, 0);
+    $("market-backtest-status").textContent = "Selesai · " + descriptors.length +
+      " kontrak market · " + evaluated + " evaluasi prediksi · " + skipped + " dilewati.";
+    $("market-backtest-output").innerHTML =
+      "<div class=\"backtest-group\"><strong>Walk-forward per market · expanding window</strong>" +
+      "<p class=\"notice\">Setiap pertandingan hanya memakai tanggal yang lebih awal; pertandingan pada tanggal sama tidak masuk training. " +
+      "Kolom odds yang hilang tidak dianggap taruhan. ROI/P&amp;L tetap kosong sampai odds historis nyata diimpor.</p>" +
+      "<div class=\"table-scroll\"><table class=\"league-table\"><thead><tr><th>Market</th><th>Pick</th><th>Line</th>" +
+      "<th>Prediksi</th><th>Skip</th><th>Tanpa odds</th><th>Taruhan</th><th>ROI</th><th>Net P/L</th></tr></thead><tbody>" +
+      rows + "</tbody></table></div></div>";
+  } catch (error) {
+    $("market-backtest-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
 
 let lastMarketMatrix = null;
 function renderMarkets(matrix) {
