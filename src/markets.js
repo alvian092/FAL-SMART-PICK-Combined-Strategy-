@@ -50,6 +50,9 @@ function combineParts(parts) {
 
 function marketOutcome(type, selection, homeGoals, awayGoals, descriptor) {
   if (type === "1x2") {
+    if (!["home", "draw", "away"].includes(selection)) {
+      throw new RangeError("1x2 selection must be home, draw, or away");
+    }
     const actual = homeGoals > awayGoals ? "home" : homeGoals === awayGoals ? "draw" : "away";
     return actual === selection ? "win" : "loss";
   }
