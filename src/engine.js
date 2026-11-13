@@ -206,3 +206,114 @@ export function estimateLambdas(matches, homeTeam, awayTeam, options = {}) {
     clamped: lambdaHome !== rawHomeLambda || lambdaAway !== rawAwayLambda
   };
 }
+
+
+/**
+ * Apply the Dixon-Coles low-score correction to an independent Poisson matrix.
+ * rho=0 is the independent-Poisson baseline. Corrected truncated matrices are
+ * normalized so market probabilities sum to one.
+ */
+export function dixonColesScoreMatrix(lambdaHome, lambdaAway, rho = -0.08, maxGoals = 10) {
+  validateLambda(lambdaHome);
+  validateLambda(lambdaAway);
+  if (!Number.isFinite(rho) || rho < -1 || rho > 1) {
+    throw new RangeError("rho must be finite and between -1 and 1");
+  }
+  if (!Number.isInteger(maxGoals) || maxGoals < 1 || maxGoals > 20) {
+    throw new RangeError("maxGoals must be an integer from 1 to 20");
+  }
+
+  const matrix = scoreMatrix(lambdaHome, lambdaAway, maxGoals);
+  const corrections = [
+    [1 - lambdaHome * lambdaAway * rho, 1 + lambdaHome * rho],
+    [1 + lambdaAway * rho, 1 - rho]
+  ];
+  corrections.forEach((row) => row.forEach((factor) => {
+    if (!Number.isFinite(factor) || factor <= 0) {
+      throw new RangeError("rho produces a non-positive Dixon-Coles correction factor");
+    }
+  }));
+
+  matrix[0][0] *= corrections[0][0];
+  if (maxGoals >= 1) {
+    matrix[0][1] *= corrections[0][1];
+    matrix[1][0] *= corrections[1][0];
+    matrix[1][1] *= corrections[1][1];
+  }
+  const total = matrix.flat().reduce((sum, probability) => sum + probability, 0);
+  if (!Number.isFinite(total) || total <= 0) {
+    throw new RangeError("Dixon-Coles matrix has no positive probability mass");
+  }
+  return matrix.map((row) => row.map((probability) => probability / total));
+}
+
+/**
+ * Calculate basic chronological Elo ratings from historical results.
+ * Home advantage affects expected scores, while rating updates remain
+ * zero-sum. Only fixtures strictly before cutoffDate are included.
+ */
+export function estimateElo(matches, homeTeam, awayTeam, options = {}) {
+  if (!Array.isArray(matches)) throw new TypeError("matches must be an array");
+  if (typeof homeTeam !== "string" || !homeTeam.trim() ||
+      typeof awayTeam !== "string" || !awayTeam.trim() || homeTeam === awayTeam) {
+    throw new TypeError("choose two different valid team names");
+  }
+  const initialRating = options.initialRating ?? 1500;
+  const kFactor = options.kFactor ?? 20;
+  const homeAdvantage = options.homeAdvantage ?? 60;
+  const cutoffDate = options.cutoffDate ?? "";
+  if (!Number.isFinite(initialRating) || initialRating < 0 || initialRating > 4000) {
+    throw new RangeError("initialRating must be between 0 and 4000");
+  }
+  if (!Number.isFinite(kFactor) || kFactor <= 0 || kFactor > 100) {
+    throw new RangeError("kFactor must be in (0, 100]");
+  }
+  if (!Number.isFinite(homeAdvantage) || homeAdvantage < -500 || homeAdvantage > 500) {
+    throw new RangeError("homeAdvantage must be between -500 and 500");
+  }
+  if (cutoffDate && !validIsoDate(cutoffDate)) {
+    throw new TypeError("cutoffDate must use YYYY-MM-DD");
+  }
+
+  const eligible = matches.map((match, index) => ({ match, index }))
+    .filter(({ match }) => match && validIsoDate(match.date) &&
+      Number.isInteger(match.homeGoals) && match.homeGoals >= 0 &&
+      Number.isInteger(match.awayGoals) && match.awayGoals >= 0 &&
+      typeof match.homeTeam === "string" && match.homeTeam.trim() &&
+      typeof match.awayTeam === "string" && match.awayTeam.trim() &&
+      match.homeTeam !== match.awayTeam &&
+      (!cutoffDate || match.date < cutoffDate))
+    .sort((a, b) => a.match.date.localeCompare(b.match.date) || a.index - b.index);
+
+  if (!eligible.length) throw new RangeError("no valid historical matches before the analysis date");
+
+  const ratings = new Map();
+  const getRating = (team) => ratings.has(team) ? ratings.get(team) : initialRating;
+  eligible.forEach(({ match }) => {
+    const homeRating = getRating(match.homeTeam);
+    const awayRating = getRating(match.awayTeam);
+    const expectedHomeScore = 1 / (1 + (10 ** ((awayRating - (homeRating + homeAdvantage)) / 400)));
+    const actualHomeScore = match.homeGoals > match.awayGoals ? 1
+      : match.homeGoals === match.awayGoals ? 0.5 : 0;
+    const change = kFactor * (actualHomeScore - expectedHomeScore);
+    ratings.set(match.homeTeam, homeRating + change);
+    ratings.set(match.awayTeam, awayRating - change);
+  });
+
+  const homeRating = getRating(homeTeam);
+  const awayRating = getRating(awayTeam);
+  const expectedHomeScore = 1 / (1 + (10 ** ((awayRating - (homeRating + homeAdvantage)) / 400)));
+  return {
+    homeRating,
+    awayRating,
+    ratingDifference: homeRating - awayRating,
+    expectedHomeScore,
+    expectedAwayScore: 1 - expectedHomeScore,
+    homeAdvantage,
+    initialRating,
+    kFactor,
+    matchesUsed: eligible.length,
+    cutoffDate: cutoffDate || null,
+    ratings: Object.fromEntries([...ratings.entries()].sort(([a], [b]) => a.localeCompare(b)))
+  };
+}
