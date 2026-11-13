@@ -85,6 +85,11 @@ function marketOutcome(type, selection, homeGoals, awayGoals, descriptor) {
     });
     return combineParts(parts);
   }
+  if (type === "btts") {
+    if (!["yes", "no"].includes(selection)) throw new RangeError("btts selection must be yes or no");
+    const yes = homeGoals > 0 && awayGoals > 0;
+    return (selection === "yes" ? yes : !yes) ? "win" : "loss";
+  }
   if (type === "oddEven") {
     if (!["odd", "even"].includes(selection)) throw new RangeError("oddEven selection must be odd or even");
     return (homeGoals + awayGoals) % 2 === (selection === "odd" ? 1 : 0) ? "win" : "loss";
@@ -178,6 +183,7 @@ export function evaluateAllMarkets(matrix, options = {}) {
     }
     for (const line of handicapLines) markets.push(evaluateMarket(matrix, { type: "handicap", team, line }));
   }
+  for (const selection of ["yes", "no"]) markets.push(evaluateMarket(matrix, { type: "btts", selection }));
   for (const selection of ["odd", "even"]) markets.push(evaluateMarket(matrix, { type: "oddEven", selection }));
   const correctScoreMaxGoals = options.correctScoreMaxGoals ?? Math.min(5, matrix.length - 1, matrix[0].length - 1);
   if (!Number.isInteger(correctScoreMaxGoals) || correctScoreMaxGoals < 0 || correctScoreMaxGoals > 20) {
