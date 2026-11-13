@@ -30,7 +30,8 @@ function parseRecords(csv) {
     if (afterQuote && char !== "," && char !== "\r" && char !== "\n" && char !== " " && char !== "\t") {
       throw new Error(`CSV tidak valid pada baris ${line}: karakter setelah tanda kutip.`);
     }
-    if (char === '"' && field.length === 0 && !afterQuote) {
+    if (char === '"' && field.trim() === "" && !afterQuote) {
+      field = "";
       quoted = true;
     } else if (char === "," ) {
       row.push(field);
