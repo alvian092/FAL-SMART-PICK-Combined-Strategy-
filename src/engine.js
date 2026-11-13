@@ -702,6 +702,67 @@ export function walkForwardBacktest(matches, options = {}) {
         reason: "model_error", message: error.message });
     }
   }
+
+/**
+ * Walk-forward validation of posterior-predictive score intervals.
+ * Every interval is fitted only from fixtures strictly before its target date.
+ * Coverage is measured on realized home goals, away goals, total goals and goal difference.
+ */
+export function walkForwardPredictiveIntervalBacktest(matches, options = {}) {
+  if (!Array.isArray(matches)) throw new TypeError("matches must be an array");
+  const iterations = options.intervalIterations ?? 100;
+  const confidenceLevel = options.confidenceLevel ?? 0.9;
+  if (!Number.isInteger(iterations) || iterations < 50 || iterations > 1000) {
+    throw new RangeError("intervalIterations must be an integer from 50 to 1000");
+  }
+  if (!Number.isFinite(confidenceLevel) || confidenceLevel <= 0.5 || confidenceLevel >= 1) {
+    throw new RangeError("confidenceLevel must be between 0.5 and 1");
+  }
+  const base = walkForwardBacktest(matches, options);
+  const predictions = [];
+  const skipped = [];
+  for (const forecast of base.predictions) {
+    const training = matches.filter((match) => match && validIsoDate(match.date) && match.date < forecast.date &&
+      Number.isInteger(match.homeGoals) && match.homeGoals >= 0 &&
+      Number.isInteger(match.awayGoals) && match.awayGoals >= 0 &&
+      typeof match.homeTeam === "string" && typeof match.awayTeam === "string");
+    const seedText = `${forecast.date}|${forecast.homeTeam}|${forecast.awayTeam}`;
+    const seed = [...seedText].reduce((value, char) =>
+      Math.imul(value ^ char.charCodeAt(0), 16777619) >>> 0, 2166136261);
+    try {
+      const result = estimateProbabilityIntervals(training, forecast.homeTeam, forecast.awayTeam, {
+        cutoffDate: forecast.date, iterations, confidenceLevel,
+        rho: options.rho ?? -0.08, maxGoals: options.maxGoals ?? 12, seed
+      });
+      predictions.push({ ...forecast, predictiveIntervals: result.predictiveIntervals,
+        intervalIterations: result.successfulIterations, intervalCutoffDate: result.cutoffDate });
+    } catch (error) {
+      skipped.push({ date: forecast.date, homeTeam: forecast.homeTeam,
+        awayTeam: forecast.awayTeam, reason: error.message });
+    }
+  }
+  const measures = {
+    homeGoals: (row) => row.homeGoals,
+    awayGoals: (row) => row.awayGoals,
+    totalGoals: (row) => row.homeGoals + row.awayGoals,
+    goalDifference: (row) => row.homeGoals - row.awayGoals
+  };
+  const coverage = Object.fromEntries(Object.entries(measures).map(([key, actualValue]) => {
+    const rows = predictions.filter((row) => row.predictiveIntervals?.[key]);
+    const hits = rows.filter((row) => {
+      const interval = row.predictiveIntervals[key];
+      const actual = actualValue(row);
+      return actual >= interval.lower && actual <= interval.upper;
+    }).length;
+    const meanWidth = rows.length ? rows.reduce((sum, row) =>
+      sum + row.predictiveIntervals[key].upper - row.predictiveIntervals[key].lower, 0) / rows.length : null;
+    return [key, { sampleSize: rows.length, covered: hits,
+      empiricalCoverage: rows.length ? hits / rows.length : null, meanWidth }];
+  }));
+  return { confidenceLevel, iterations, predictions, skipped, evaluated: predictions.length,
+    skippedCount: skipped.length, coverage, baseBacktest: base };
+}
+
   const calibratedPredictions = predictions.filter((item) => item.calibrationStatus === "fitted_on_prior_forecasts");
   return {
     predictions,
