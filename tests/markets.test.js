@@ -65,9 +65,11 @@ test("all-markets builder returns the supported market families with normalized 
     totalsLines: [2.25], handicapLines: [-0.25, 0.25], teamTotalLines: [0.75]
   });
   const types = new Set(markets.map((market) => market.type));
-  for (const type of ["1x2", "doubleChance", "totalGoals", "teamTotal", "handicap", "oddEven"]) {
+  for (const type of ["1x2", "doubleChance", "totalGoals", "teamTotal", "handicap", "oddEven", "correctScore"]) {
     assert.ok(types.has(type), `missing ${type}`);
   }
+  assert.ok(markets.some((market) => market.type === "correctScore" && market.homeGoals === 0 && market.awayGoals === 0));
+  assert.ok(markets.find((market) => market.type === "1x2").fairOdds > 1);
   for (const market of markets) {
     const total = Object.values(market.outcomes).reduce((sum, value) => sum + value, 0);
     close(total, 1);
