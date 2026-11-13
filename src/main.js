@@ -1,4 +1,4 @@
-import { scoreMatrix, matchProbabilities, fairOdds, expectedValue, estimateLambdas } from "./engine.js";
+import { scoreMatrix, dixonColesScoreMatrix, matchProbabilities, fairOdds, expectedValue, estimateLambdas, estimateElo } from "./engine.js";
 import { parseHistoricalCsv, getHistoricalLeagues, getHistoricalTeams, getHeadToHead } from "./historical.js";
 import "./styles.css";
 
@@ -38,6 +38,7 @@ app.innerHTML = `
         <label>Tim tandang<input id="away" value="Away Team" maxlength="60"></label>
         <label>Lambda kandang<input id="lh" type="number" min="0" max="8" step="0.01" value="1.55"></label>
         <label>Lambda tandang<input id="la" type="number" min="0" max="8" step="0.01" value="1.10"></label>
+        <label>Dixon-Coles rho<input id="rho" type="number" min="-1" max="1" step="0.01" value="-0.08"></label>
         <label>Tanggal analisis<input id="analysis-date" type="date"></label>
       </div>
       <button id="estimate-lambda" class="secondary">Hitung lambda otomatis · 20 laga</button>
@@ -48,6 +49,7 @@ app.innerHTML = `
     <section class="panel">
       <div class="section-heading"><div><p class="eyebrow">02 / MODEL OUTPUT</p><h2 id="match-title">Home Team vs Away Team</h2></div><span class="tag">POISSON BASELINE</span></div>
       <div id="probabilities" class="metric-grid"></div>
+      <div id="elo-output" class="elo-output" aria-live="polite"></div>
       <p class="notice">Lambda dapat dihitung dari maksimal 20 penampilan terakhir setiap tim di semua kompetisi yang diimpor, hanya memakai pertandingan sebelum tanggal analisis. Kamu tetap bisa mengubah lambda secara manual.</p>
     </section>
     <section class="panel">
@@ -67,7 +69,8 @@ app.innerHTML = `
         <li class="done">Foundation · Poisson probability · manual odds</li>
         <li class="done">Historical CSV import · validation · league/team selector · H2H</li>
         <li class="done">Automatic lambda · last 20 appearances · venue and opponent adjustment</li>
-        <li>Dixon-Coles · Elo · calibration</li>
+        <li class="done">Dixon-Coles low-score correction · chronological Elo ratings</li>
+        <li>Probability calibration · reliability diagnostics</li>
         <li>All markets · fair odds · EV · Kelly</li>
         <li>Smart Pick ranking · walk-forward backtest</li>
         <li>Live model · Android APK release</li>
@@ -247,7 +250,8 @@ function render() {
     $("error").textContent = "";
     const lh = Number($("lh").value);
     const la = Number($("la").value);
-    const matrix = scoreMatrix(lh, la, 12);
+    const rho = Number($("rho").value);
+    const matrix = dixonColesScoreMatrix(lh, la, rho, 12);
     const p = matchProbabilities(matrix);
     const home = $("home").value.trim() || "Home";
     const away = $("away").value.trim() || "Away";
@@ -256,6 +260,13 @@ function render() {
       ["HOME", p.home], ["DRAW", p.draw], ["AWAY", p.away],
       ["OVER 2.5", p.over25], ["UNDER 2.5", p.under25], ["BTTS YES", p.bttsYes]
     ].map(([label, value]) => `<article class="metric"><small>${label}</small><strong>${pct(value)}</strong><span>Fair ${num(fairOdds(value))}</span></article>`).join("");
+    try {
+      const elo = estimateElo(historicalMatches, home, away, { cutoffDate: $("analysis-date").value });
+      const difference = elo.ratingDifference;
+      $("elo-output").innerHTML = `<strong>TEAM ELO · ${elo.matchesUsed} laga historis</strong><div class="elo-grid"><span>${escapeHtml(home)}<b>${num(elo.homeRating)}</b></span><span>${escapeHtml(away)}<b>${num(elo.awayRating)}</b></span></div><small>Selisih rating ${difference >= 0 ? "+" : ""}${num(difference)} · expected score kandang ${pct(elo.expectedHomeScore)} (bukan probabilitas menang) · home advantage ${num(elo.homeAdvantage)} poin</small>`;
+    } catch (eloError) {
+      $("elo-output").textContent = `Elo belum tersedia: ${eloError.message}`;
+    }
     const odds = [Number($("oh").value), Number($("od").value), Number($("oa").value)];
     const values = [p.home, p.draw, p.away];
     const labels = [home, "Draw", away];
@@ -269,7 +280,7 @@ function render() {
   }
 }
 $("analyze").addEventListener("click", render);
-["home","away","lh","la","oh","od","oa"].forEach((id) => $(id).addEventListener("change", render));
+["home","away","lh","la","rho","oh","od","oa","analysis-date"].forEach((id) => $(id).addEventListener("change", render));
 setDefaultAnalysisDate();
 updateTeamSelectors();
 if (historicalMatches.length) {
