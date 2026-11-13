@@ -100,12 +100,14 @@ function marketOutcome(type, selection, homeGoals, awayGoals, descriptor) {
 }
 
 function priceOutcomes(outcomes, decimalOdds) {
-  if (decimalOdds === undefined || decimalOdds === null || decimalOdds === "") return { fairOdds: null, expectedValue: null, kellyFraction: null };
-  if (!Number.isFinite(decimalOdds) || decimalOdds <= 1) throw new RangeError("decimal odds must be greater than 1");
   const p = outcomes;
   const winExposure = p.win + 0.5 * p.halfWin + 0.5 * p.split;
   const lossExposure = p.loss + 0.5 * p.halfLoss + 0.5 * p.split;
   const fairOdds = winExposure > 0 ? 1 + lossExposure / winExposure : null;
+  if (decimalOdds === undefined || decimalOdds === null || decimalOdds === "") {
+    return { fairOdds, expectedValue: null, kellyFraction: null };
+  }
+  if (!Number.isFinite(decimalOdds) || decimalOdds <= 1) throw new RangeError("decimal odds must be greater than 1");
   const returns = {
     win: decimalOdds - 1,
     halfWin: (decimalOdds - 1) / 2,
@@ -176,5 +178,14 @@ export function evaluateAllMarkets(matrix, options = {}) {
     for (const line of handicapLines) markets.push(evaluateMarket(matrix, { type: "handicap", team, line }));
   }
   for (const selection of ["odd", "even"]) markets.push(evaluateMarket(matrix, { type: "oddEven", selection }));
+  const correctScoreMaxGoals = options.correctScoreMaxGoals ?? Math.min(5, matrix.length - 1, matrix[0].length - 1);
+  if (!Number.isInteger(correctScoreMaxGoals) || correctScoreMaxGoals < 0 || correctScoreMaxGoals > 20) {
+    throw new RangeError("correctScoreMaxGoals must be an integer from 0 to 20");
+  }
+  for (let homeGoals = 0; homeGoals <= Math.min(correctScoreMaxGoals, matrix.length - 1); homeGoals += 1) {
+    for (let awayGoals = 0; awayGoals <= Math.min(correctScoreMaxGoals, matrix[0].length - 1); awayGoals += 1) {
+      markets.push(evaluateMarket(matrix, { type: "correctScore", homeGoals, awayGoals }));
+    }
+  }
   return markets;
 }
