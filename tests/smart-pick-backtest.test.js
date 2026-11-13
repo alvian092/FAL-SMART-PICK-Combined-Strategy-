@@ -33,13 +33,17 @@ test("Smart Pick walk-forward settles one best eligible candidate per fixture an
   });
   assert.equal(result.evaluatedBets, 9);
   assert.equal(result.summary.bets, 9);
-  assert.ok(result.bets.every((bet) => bet.stake > 0 && bet.stake <= 20));
+  let priorBankroll = 1000;
+  for (const bet of result.bets) {
+    assert.ok(bet.stake > 0 && bet.stake <= priorBankroll * 0.02 + 1e-9);
+    priorBankroll += bet.profit;
+  }
   assert.equal(result.summary.totalStake, result.bets.reduce((sum, bet) => sum + bet.stake, 0));
   assert.ok(Math.abs(result.summary.roi - result.summary.netProfit / result.summary.totalStake) < 1e-12);
   assert.equal(result.summary.clvBets, 9);
   assert.ok(result.summary.averageClv > 0);
   assert.ok(result.summary.maxDrawdown >= 0 && result.summary.maxDrawdown <= 1);
-  assert.equal(result.equityCurve.length, 3);
+  assert.equal(result.equityCurve.length, 9);
 });
 
 test("walk-forward excludes same-day/future results from candidate decision history", () => {
@@ -74,7 +78,7 @@ test("candidates failing Smart Pick filters force NO BET and do not change bankr
   });
   assert.equal(result.evaluatedBets, 0);
   assert.equal(result.summary.finalBankroll, 1000);
-  assert.ok(result.noBets.every(row => row.reason === "no_candidate_passed_smart_pick"));
+  assert.equal(result.noBets.filter(row => row.reason === "no_candidate_passed_smart_pick").length, 9);
 });
 
 test("CLV is null when closing price is absent; fixed stake cannot exceed bankroll", () => {
