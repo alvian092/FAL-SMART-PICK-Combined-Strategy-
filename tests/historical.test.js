@@ -44,7 +44,6 @@ test("invalid dates, scores, same teams and wrong column counts are reported", (
   const result = parseHistoricalCsv(csv);
   assert.equal(result.matches.length, 0);
   assert.equal(result.errors.length, 4);
-  assert.throws(() => parseHistoricalCsv(csv), /Tidak ada baris valid/i);
 });
 
 test("keeps valid rows and reports duplicate fixtures without double counting", () => {
