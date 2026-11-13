@@ -7,7 +7,7 @@ const matrix = [[0.1, 0.2], [0.2, 0.5]];
 test("Smart Pick ranks eligible candidates by EV then positive-return probability", () => {
   const result = rankSmartPicks(matrix, [
     { id: "lower-ev", descriptor: { type: "1x2", selection: "home" }, odds: 2.2 },
-    { id: "higher-ev", descriptor: { type: "1x2", selection: "draw" }, odds: 5.5 },
+    { id: "higher-ev", descriptor: { type: "1x2", selection: "draw" }, odds: 9.5 },
     { id: "missing", descriptor: { type: "btts", selection: "yes" } }
   ], { minProbability: 0.1, minExpectedValue: -0.5, maxStakeFraction: 0.02 });
   assert.equal(result.status, "BET");
@@ -50,4 +50,15 @@ test("Smart Pick rejects prices outside the configured risk window", () => {
 test("Smart Pick validates thresholds and market candidates", () => {
   assert.throws(() => rankSmartPicks(matrix, [], { minProbability: 1.1 }), /between 0 and 1/i);
   assert.throws(() => rankSmartPicks(matrix, [null]), /requires a market descriptor/i);
+});
+
+test("Smart Pick uses positive-return probability as the EV tie-breaker", () => {
+  const result = rankSmartPicks(matrix, [
+    { id: "lower-probability", descriptor: { type: "1x2", selection: "draw" }, odds: 7 },
+    { id: "higher-probability", descriptor: { type: "1x2", selection: "home" }, odds: 2 }
+  ], { minProbability: 0.1, minExpectedValue: 0.39, maxStakeFraction: 0.02 });
+  assert.equal(result.status, "BET");
+  assert.equal(result.ranked[0].id, "higher-probability");
+  assert.equal(result.ranked[1].id, "lower-probability");
+  assert.ok(Math.abs(result.ranked[0].expectedValue - result.ranked[1].expectedValue) < 1e-12);
 });
