@@ -5,7 +5,8 @@ import {
   fitTemperatureScaling,
   walkForwardBacktest,
   calculateReliabilityBins,
-  evaluatePerformanceByLeague
+  evaluatePerformanceByLeague,
+  estimateProbabilityIntervals
 } from "../src/engine.js";
 
 const close = (a, b, tolerance = 1e-10) => assert.ok(Math.abs(a - b) <= tolerance, `${a} is not close to ${b}`);
@@ -129,4 +130,28 @@ test("per-league evaluation preserves separate out-of-sample scorecards and cali
   assert.equal(result[1].calibrationMetrics, null);
   assert.equal(result[1].rawMetrics.sampleSize, 1);
   assert.throws(() => evaluatePerformanceByLeague(null), /array/i);
+});
+
+test("bootstrap uncertainty intervals are deterministic, bounded, and pre-date only", () => {
+  const matches = [];
+  for (let day = 1; day <= 24; day += 1) matches.push({
+    date: `2025-01-${String(day).padStart(2, "0")}`,
+    league: "Test League",
+    homeTeam: day % 2 ? "Alpha" : "Beta",
+    awayTeam: day % 2 ? "Beta" : "Alpha",
+    homeGoals: day % 4 === 0 ? 0 : day % 3,
+    awayGoals: day % 5 === 0 ? 2 : day % 2
+  });
+  const options = { cutoffDate: "2025-01-25", iterations: 60, confidenceLevel: 0.9, seed: 12345 };
+  const first = estimateProbabilityIntervals(matches, "Alpha", "Beta", options);
+  assert.deepEqual(first, estimateProbabilityIntervals(matches, "Alpha", "Beta", options));
+  assert.equal(first.sampleSize, 24);
+  assert.equal(first.successfulIterations + first.failedIterations, 60);
+  for (const key of ["home", "draw", "away", "over25", "bttsYes"]) {
+    assert.ok(first.intervals[key].lower >= 0 && first.intervals[key].upper <= 1);
+    assert.ok(first.intervals[key].lower <= first.intervals[key].median && first.intervals[key].median <= first.intervals[key].upper);
+  }
+  assert.ok(first.intervals.lambdaHome.lower >= 0 && first.intervals.lambdaHome.upper <= 8);
+  assert.throws(() => estimateProbabilityIntervals(matches, "Alpha", "Beta", { ...options, cutoffDate: "2025-01-24" }), /at least 5 prior appearances|at least 10/i);
+  assert.throws(() => estimateProbabilityIntervals(matches, "Alpha", "Beta", { ...options, iterations: 10 }), /iterations/i);
 });
