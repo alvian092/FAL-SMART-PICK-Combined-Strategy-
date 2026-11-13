@@ -1,5 +1,6 @@
 import { dixonColesScoreMatrix, matchProbabilities, fairOdds, expectedValue, estimateLambdas, estimateElo, walkForwardBacktest, estimateProbabilityIntervals, walkForwardPredictiveIntervalBacktest } from "./engine.js";
 import { parseHistoricalCsv, getHistoricalLeagues, getHistoricalTeams, getHeadToHead } from "./historical.js";
+import { evaluateAllMarkets, evaluateMarket } from "./markets.js";
 import "./styles.css";
 
 const app = document.querySelector("#app");
@@ -63,6 +64,12 @@ app.innerHTML = `
       </div>
       <div id="value-output" class="value-output"></div>
       <p class="notice">EV adalah estimasi matematis, bukan jaminan hasil. Periksa kualitas data, margin, dan ketidakpastian model sebelum mengambil keputusan.</p>
+    </section>
+    <section class="panel">
+      <div class="section-heading"><div><p class="eyebrow">04 / ALL MARKETS</p><h2>Market probabilities & fair odds</h2></div><span class="tag">SETTLEMENT ENGINE</span></div>
+      <p class="muted compact">Probabilitas dihitung dari score matrix Poisson + Dixon-Coles. Isi odds manual di baris pasar untuk melihat EV dan Kelly. Asian quarter line memakai settlement half-win, half-loss, dan push.</p>
+      <div id="market-status" class="import-status" role="status">Hitung probabilitas pertandingan untuk menampilkan seluruh pasar.</div>
+      <div id="market-output" class="table-scroll"></div>
     </section>
     <section class="panel backtest-panel">\n      <div class="section-heading"><div><p class="eyebrow">04 / MODEL VALIDATION</p><h2>Walk-forward backtest</h2></div><span class="tag">TIME ORDERED</span></div>\n      <p class="muted compact">Uji prediksi historis secara kronologis. Setiap pertandingan hanya diprediksi memakai data dari tanggal sebelumnya; kalibrasi hanya memakai prediksi out-of-sample yang lebih lama. Pertandingan yang datanya belum cukup akan dilewati dan dilaporkan.</p>\n      <button id="run-backtest" class="secondary">Jalankan walk-forward backtest</button>
       <button id="run-interval-backtest" class="secondary">Uji coverage uncertainty intervals</button>
@@ -428,6 +435,60 @@ $("run-backtest").addEventListener("click", () => {
   }
 });
 
+
+let lastMarketMatrix = null;
+function renderMarkets(matrix) {
+  lastMarketMatrix = matrix;
+  const markets = evaluateAllMarkets(matrix);
+  const typeLabel = (market) => ({
+    "1x2": "1X2", doubleChance: "Double chance", totalGoals: "Total goals",
+    teamTotal: "Team total " + (market.team === "home" ? "home" : "away"),
+    handicap: "Asian handicap " + (market.team === "home" ? "home" : "away"),
+    oddEven: "Odd/even", correctScore: "Correct score"
+  })[market.type];
+  const selectionLabel = (market) => {
+    if (market.type === "doubleChance") return ({ homeDraw: "1X", homeAway: "12", drawAway: "X2" })[market.selection];
+    if (market.type === "correctScore") return market.homeGoals + "–" + market.awayGoals;
+    if (market.type === "handicap") return market.team.toUpperCase();
+    return market.selection ? market.selection.toUpperCase() : "—";
+  };
+  const rows = markets.map((market, index) => {
+    const descriptor = JSON.stringify({ type: market.type, selection: market.selection,
+      team: market.team, line: market.line, homeGoals: market.homeGoals, awayGoals: market.awayGoals });
+    const line = market.type === "correctScore" ? "—" : market.line === null ? "—" : market.line.toFixed(2);
+    const o = market.outcomes;
+    return "<tr data-market-row=\"" + index + "\"><td>" + typeLabel(market) + "</td><td>" +
+      selectionLabel(market) + "</td><td>" + line + "</td><td>" + pct(o.win) + "</td><td>" +
+      pct(o.halfWin) + "</td><td>" + pct(o.push) + "</td><td>" + pct(o.halfLoss) + "</td><td>" +
+      pct(o.loss) + "</td><td data-field=\"fair\">" + (market.fairOdds === null ? "—" : num(market.fairOdds)) +
+      "</td><td><input class=\"market-odds\" type=\"number\" min=\"1.01\" step=\"0.01\" inputmode=\"decimal\" placeholder=\"Odds\" data-descriptor=\"" +
+      escapeHtml(descriptor) + "\"></td><td data-field=\"ev\">—</td><td data-field=\"kelly\">—</td></tr>";
+  }).join("");
+  $("market-output").innerHTML = "<table class=\"league-table market-table\"><thead><tr><th>Market</th><th>Pick</th>" +
+    "<th>Line</th><th>Win</th><th>½ Win</th><th>Push</th><th>½ Loss</th><th>Loss</th><th>Fair odds</th>" +
+    "<th>Odds input</th><th>EV</th><th>Kelly</th></tr></thead><tbody>" + rows + "</tbody></table>";
+  $("market-status").textContent = markets.length + " pilihan pasar tersedia · fair odds dihitung dari settlement matrix.";
+}
+
+$("market-output").addEventListener("input", (event) => {
+  const input = event.target;
+  if (!input.classList.contains("market-odds") || !lastMarketMatrix) return;
+  const row = input.closest("tr");
+  const descriptor = JSON.parse(input.dataset.descriptor);
+  const odds = input.value.trim() === "" ? null : Number(input.value);
+  try {
+    const result = evaluateMarket(lastMarketMatrix, descriptor, odds);
+    row.querySelector('[data-field="fair"]').textContent = result.fairOdds === null ? "—" : num(result.fairOdds);
+    row.querySelector('[data-field="ev"]').textContent = result.expectedValue === null ? "—" : pct(result.expectedValue);
+    row.querySelector('[data-field="kelly"]').textContent = result.kellyFraction === null ? "—" : pct(result.kellyFraction);
+    input.setCustomValidity("");
+  } catch (error) {
+    row.querySelector('[data-field="ev"]').textContent = "—";
+    row.querySelector('[data-field="kelly"]').textContent = "—";
+    input.setCustomValidity(error.message);
+  }
+});
+
 function render() {
   try {
     $("error").textContent = "";
@@ -436,6 +497,7 @@ function render() {
     const rho = Number($("rho").value);
     const matrix = dixonColesScoreMatrix(lh, la, rho, 12);
     const p = matchProbabilities(matrix);
+    renderMarkets(matrix);
     const home = $("home").value.trim() || "Home";
     const away = $("away").value.trim() || "Away";
     $("match-title").textContent = `${home} vs ${away}`;
