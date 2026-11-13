@@ -51,7 +51,7 @@ test("walk-forward excludes same-day/future results from candidate decision hist
       return odds();
     }
   });
-  assert.ok(seen.every((row) => row.trainingMatches === 16 + Number(row.date >= "2025-01-18")));
+  assert.deepEqual(seen.map(row => row.trainingMatches), [16, 17, 18]);
   assert.deepEqual(seen.map(row => row.date), ["2025-01-17", "2025-01-18", "2025-01-19"]);
 });
 
