@@ -329,7 +329,9 @@ $("run-backtest").addEventListener("click", () => {
         <p class="notice">Bandingkan liga dengan hati-hati: sampel kecil menghasilkan metrik yang tidak stabil. LL = log loss; nilai LL/Brier lebih rendah lebih baik.</p>
       </div>` : "";
 
-    $("backtest-output").insertAdjacentHTML("beforeend", reliabilityHtml + leagueHtml);
+    $("backtest-output").insertAdjacentHTML("beforeend",
+      `<div class="backtest-group"><strong>Reliability diagram & calibration bins</strong><p class="notice">Setiap grafik memakai pendekatan one-vs-rest untuk Home/Draw/Away. Garis diagonal adalah kalibrasi ideal. Diagram calibrated-only mengecualikan periode warm-up dan bisa kosong jika sampel kalibrasi belum cukup.</p></div>` +
+      reliabilityHtml + leagueHtml);
   } catch (error) {
     $("backtest-status").textContent = error.message;
   } finally {
