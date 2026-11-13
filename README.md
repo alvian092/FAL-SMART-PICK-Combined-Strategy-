@@ -10,6 +10,8 @@ An Android-first Football Analytics Lab project. This repository starts with a s
 - Fair decimal odds, expected value, and no-vig probability helpers.
 - Manual lambda and odds input for an initial vertical slice.
 - Automatic lambda from each team’s latest 20 appearances across all imported competitions, with venue/opponent adjustment, recency weighting, and a pre-match date cutoff.
+- Dixon-Coles low-score correction for 0–0, 0–1, 1–0, and 1–1 scorelines, with validated rho and normalized score probabilities.
+- Chronological Elo ratings across imported fixtures, with configurable K-factor/home advantage and a strict pre-match cutoff. Elo expected score is shown separately from match-win probability.
 - Node.js unit tests.
 - GitHub Actions workflow that tests, builds the web bundle, generates the Android project, assembles a Debug APK, verifies it exists, and uploads it as an artifact.
 
@@ -40,7 +42,8 @@ The GitHub Actions workflow performs this sequence on pushes to `main` and `deve
 ## Model and data integrity rules
 
 - Missing statistics or odds must remain missing; never fabricate values.
-- Historical predictions must use only information available before kickoff.
+- Historical predictions must use only information available before kickoff; Dixon-Coles and Elo both enforce a strict date cutoff.
+- Elo expected score is not a 1X2 win probability; keep it separate from calibrated match-market probabilities.
 - Store prediction timestamp, model version, input snapshot, odds snapshot, and final result for auditability.
 - Do not count H2H records twice when they are already part of each team's match history.
 - Separate probability ranking from value ranking. A high win probability is not automatically positive expected value.
@@ -51,7 +54,7 @@ The GitHub Actions workflow performs this sequence on pushes to `main` and `deve
 
 1. Historical CSV import, validation, team/league selector, and H2H.
 2. Automatic lambda with home/away strength and opponent adjustment.
-3. Dixon-Coles and Elo with calibration tests.
+3. Dixon-Coles low-score adjustment and chronological Elo ratings with regression tests (implemented); probability calibration and reliability diagnostics remain planned.
 4. All requested markets with correct Asian line settlement and fair odds.
 5. Combined Smart Pick ranking, uncertainty gates, and NO BET.
 6. Walk-forward backtesting, ROI, yield, CLV, drawdown, and calibration.
