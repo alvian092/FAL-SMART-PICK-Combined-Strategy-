@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluateMarket, evaluateAllMarkets } from "../src/markets.js";
+import { evaluateMarket, evaluateAllMarkets, settleMarketBet, summarizeMarketBets } from "../src/markets.js";
 
 const close = (a, b, tolerance = 1e-10) =>
   assert.ok(Math.abs(a - b) <= tolerance, `${a} is not close to ${b}`);
@@ -76,4 +76,54 @@ test("all-markets builder returns the supported market families with normalized 
     const total = Object.values(market.outcomes).reduce((sum, value) => sum + value, 0);
     close(total, 1);
   }
+});
+
+test("actual bet settlement calculates win, half-win, push, half-loss and loss P/L", () => {
+  const win = settleMarketBet({ type: "1x2", selection: "home" }, 2, 0, 2, 100);
+  assert.equal(win.outcome, "win");
+  assert.equal(win.profit, 100);
+  assert.equal(win.returnAmount, 200);
+
+  const halfWin = settleMarketBet({ type: "totalGoals", selection: "under", line: 2.25 }, 1, 1, 2, 100);
+  assert.equal(halfWin.outcome, "halfWin");
+  assert.equal(halfWin.profit, 50);
+
+  const push = settleMarketBet({ type: "totalGoals", selection: "over", line: 2 }, 1, 1, 1.9, 50);
+  assert.equal(push.outcome, "push");
+  assert.equal(push.profit, 0);
+  assert.equal(push.returnAmount, 50);
+
+  const halfLoss = settleMarketBet({ type: "handicap", team: "home", line: -0.25 }, 1, 1, 2, 80);
+  assert.equal(halfLoss.outcome, "halfLoss");
+  assert.equal(halfLoss.profit, -40);
+
+  const loss = settleMarketBet({ type: "1x2", selection: "home" }, 0, 1, 2.1, 100);
+  assert.equal(loss.outcome, "loss");
+  assert.equal(loss.profit, -100);
+
+  const splitWin = settleMarketBet({ type: "handicap", team: "home", line: 0.25 }, 1, 1, 2, 100);
+  assert.equal(splitWin.outcome, "halfWin");
+  assert.equal(splitWin.profit, 50);
+});
+
+test("market bet summary calculates turnover, net P/L and ROI", () => {
+  const bets = [
+    settleMarketBet({ type: "1x2", selection: "home" }, 2, 0, 2, 100),
+    settleMarketBet({ type: "totalGoals", selection: "under", line: 2.25 }, 1, 1, 2.5, 100),
+    settleMarketBet({ type: "totalGoals", selection: "over", line: 2 }, 1, 1, 1.9, 50),
+    settleMarketBet({ type: "handicap", team: "home", line: -0.25 }, 1, 1, 2, 80),
+    settleMarketBet({ type: "1x2", selection: "home" }, 0, 1, 2.1, 100),
+    settleMarketBet({ type: "1x2", selection: "home" }, 2, 0, 3, 60)
+  ];
+  const summary = summarizeMarketBets(bets);
+  assert.equal(summary.bets, 6);
+  assert.equal(summary.totalStake, 490);
+  assert.equal(summary.netProfit, 115);
+  close(summary.roi, 115 / 490);
+  assert.equal(summary.wins, 1);
+  assert.equal(summary.halfWins, 2);
+  assert.equal(summary.pushes, 1);
+  assert.equal(summary.halfLosses, 1);
+  assert.equal(summary.losses, 1);
+  assert.throws(() => summarizeMarketBets([{ stake: 10, profit: 1, outcome: "unknown" }]), /unknown/i);
 });
