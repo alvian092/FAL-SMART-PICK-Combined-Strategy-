@@ -123,7 +123,7 @@ function priceOutcomes(outcomes, decimalOdds) {
   }, 0);
   let kellyFraction = 0;
   if (expectedValue > 0) {
-    const worst = Math.min(...Object.values(returns));
+    const worst = Math.min(...OUTCOME_KEYS.filter((key) => p[key] > 0).map((key) => returns[key]));
     if (worst >= 0) kellyFraction = 1;
     else {
       let low = 0;
