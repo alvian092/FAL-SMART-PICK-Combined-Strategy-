@@ -9,7 +9,7 @@ const OUTCOME_RETURNS = (odds) => ({
   split: (odds - 2) / 2
 });
 
-function validateOptions(options) {
+export function validateSmartPickOptions(options = {}) {
   const config = {
     minProbability: options.minProbability ?? 0.4,
     minExpectedValue: options.minExpectedValue ?? 0.02,
@@ -40,7 +40,7 @@ function validateOptions(options) {
  */
 export function rankSmartPicks(matrix, candidates, options = {}) {
   if (!Array.isArray(candidates)) throw new TypeError("candidates must be an array");
-  const config = validateOptions(options);
+  const config = validateSmartPickOptions(options);
   const evaluated = candidates.map((candidate, index) => {
     if (!candidate || typeof candidate !== "object" || !candidate.descriptor) {
       throw new TypeError("each candidate requires a market descriptor");
