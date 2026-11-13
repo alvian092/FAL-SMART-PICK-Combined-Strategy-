@@ -67,6 +67,8 @@ test("walk-forward forecasts are chronological and never train on same-day or fu
     close(prediction.calibrated.home + prediction.calibrated.draw + prediction.calibrated.away, 1);
   }
   assert.ok(result.calibrationSamples > 0);
+  assert.equal(result.reliability.home.sampleSize, result.calibrationSamples);
+  assert.equal(result.reliabilityRaw.home.sampleSize, result.evaluated);
   assert.ok(result.rawMetrics.logLoss >= 0);
   assert.ok(result.rawMetrics.brierScore >= 0);
   assert.ok(result.rawMetrics.accuracy >= 0 && result.rawMetrics.accuracy <= 1);
