@@ -35,21 +35,41 @@ function descriptorFrom(row) {
   const { market, selection } = row;
   if (!MARKETS.has(market)) throw new RangeError("unsupported market: " + market);
   const descriptor = { type: market };
-  if (["1x2", "doubleChance", "totalGoals", "teamTotal", "btts", "oddEven"].includes(market)) descriptor.selection = selection;
+  const selections = {
+    "1x2": ["home", "draw", "away"],
+    doubleChance: ["homeDraw", "homeAway", "drawAway"],
+    totalGoals: ["over", "under"],
+    teamTotal: ["over", "under"],
+    btts: ["yes", "no"],
+    oddEven: ["odd", "even"]
+  };
+  if (selections[market]) {
+    if (!selections[market].includes(selection)) {
+      throw new RangeError("invalid " + market + " selection: " + selection);
+    }
+    descriptor.selection = selection;
+  } else if (selection !== "") {
+    throw new RangeError(market + " selection must be blank");
+  }
   if (["totalGoals", "teamTotal", "handicap"].includes(market)) {
     descriptor.line = Number(row.line);
-    if (!Number.isFinite(descriptor.line)) throw new RangeError("market line is required and must be numeric");
+    if (!Number.isFinite(descriptor.line) || Math.abs(descriptor.line) > 20 ||
+        Math.abs(descriptor.line * 4 - Math.round(descriptor.line * 4)) > 1e-8) {
+      throw new RangeError("market line must be a valid Asian quarter-line from -20 to 20");
+    }
   }
   if (["teamTotal", "handicap"].includes(market)) {
     descriptor.team = row.team;
     if (!["home", "away"].includes(descriptor.team)) throw new RangeError("team must be home or away");
+  } else if (market === "handicap" && row.team !== "home" && row.team !== "away") {
+    throw new RangeError("handicap team must be home or away");
   }
   if (market === "correctScore") {
     descriptor.homeGoals = Number(row.home_goals);
     descriptor.awayGoals = Number(row.away_goals);
-    if (!Number.isInteger(descriptor.homeGoals) || descriptor.homeGoals < 0 ||
-        !Number.isInteger(descriptor.awayGoals) || descriptor.awayGoals < 0) {
-      throw new RangeError("correctScore requires home_goals and away_goals");
+    if (!Number.isInteger(descriptor.homeGoals) || descriptor.homeGoals < 0 || descriptor.homeGoals > 30 ||
+        !Number.isInteger(descriptor.awayGoals) || descriptor.awayGoals < 0 || descriptor.awayGoals > 30) {
+      throw new RangeError("correctScore requires home_goals and away_goals from 0 to 30");
     }
   }
   return descriptor;
