@@ -1,0 +1,6 @@
+{
+  "appId": "com.fal.smartpick",
+  "appName": "FAL Smart Pick",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}
