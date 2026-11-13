@@ -201,7 +201,7 @@ $("use-teams").addEventListener("click", () => {
   }
   $("home").value = home;
   $("away").value = away;
-  $("import-status").textContent = `Pilihan diterapkan: ${home} vs ${away}. Lambda masih perlu dihitung/diisi terpisah.`;
+  $("import-status").textContent = `Pilihan diterapkan: ${home} vs ${away}. Tekan Hitung lambda otomatis untuk menghitung dari riwayat 20 laga.`;
   render();
 });
 
