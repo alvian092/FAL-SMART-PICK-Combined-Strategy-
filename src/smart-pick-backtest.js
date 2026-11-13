@@ -1,6 +1,6 @@
 import { estimateLambdas, dixonColesScoreMatrix } from "./engine.js";
 import { settleMarketBet } from "./markets.js";
-import { rankSmartPicks } from "./smart-pick.js";
+import { rankSmartPicks, validateSmartPickOptions } from "./smart-pick.js";
 
 function isFixture(match) {
   return match && typeof match.date === "string" &&
@@ -47,7 +47,7 @@ export function walkForwardSmartPickBacktest(matches, options = {}) {
   if (options.candidateProvider !== undefined && typeof options.candidateProvider !== "function") {
     throw new TypeError("candidateProvider must be a function");
   }
-  const initialBankroll = options.initialBankroll ?? 1000;
+  const pickOptions = validateSmartPickOptions(options.pickOptions ?? {});\n  const initialBankroll = options.initialBankroll ?? 1000;
   const minTrainingMatches = options.minTrainingMatches ?? 30;
   const minTeamAppearances = options.minTeamAppearances ?? 5;
   const rho = options.rho ?? -0.08;
@@ -100,7 +100,7 @@ export function walkForwardSmartPickBacktest(matches, options = {}) {
         noBets.push({ date: fixture.date, homeTeam: fixture.homeTeam, awayTeam: fixture.awayTeam, reason: "no_priced_candidates" });
         continue;
       }
-      const selection = rankSmartPicks(matrix, candidates, options.pickOptions ?? {});
+      const selection = rankSmartPicks(matrix, candidates, pickOptions);
       if (selection.status !== "BET" || !selection.best) {
         noBets.push({ date: fixture.date, homeTeam: fixture.homeTeam, awayTeam: fixture.awayTeam,
           reason: "no_candidate_passed_smart_pick", rejected: selection.rejected.length });
