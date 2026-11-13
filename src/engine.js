@@ -439,6 +439,78 @@ function calculateForecastMetrics(predictions, probabilityKey) {
   };
 }
 
+
+/**
+ * One-vs-rest reliability bins for each 1X2 outcome.
+ * Empty bins are retained so charts share a stable 0..1 axis.
+ */
+export function calculateReliabilityBins(predictions, probabilityKey = "calibrated", binCount = 10) {
+  if (!Array.isArray(predictions)) throw new TypeError("predictions must be an array");
+  if (!["raw", "calibrated"].includes(probabilityKey)) throw new RangeError("probabilityKey must be raw or calibrated");
+  if (!Number.isInteger(binCount) || binCount < 2 || binCount > 20) {
+    throw new RangeError("binCount must be an integer from 2 to 20");
+  }
+  const outcomes = ["home", "draw", "away"];
+  const result = {};
+  for (const outcome of outcomes) {
+    const bins = Array.from({ length: binCount }, (_, index) => ({
+      lower: index / binCount,
+      upper: (index + 1) / binCount,
+      count: 0,
+      predictedSum: 0,
+      observedSum: 0
+    }));
+    for (const prediction of predictions) {
+      const probabilities = prediction?.[probabilityKey];
+      validateThreeWayProbabilities(probabilities);
+      validateOutcome(prediction.actual);
+      const probability = probabilities[outcome];
+      const index = Math.min(binCount - 1, Math.floor(probability * binCount));
+      bins[index].count += 1;
+      bins[index].predictedSum += probability;
+      bins[index].observedSum += prediction.actual === outcome ? 1 : 0;
+    }
+    const total = predictions.length;
+    const populated = bins.map((bin) => ({
+      lower: bin.lower,
+      upper: bin.upper,
+      count: bin.count,
+      meanPredicted: bin.count ? bin.predictedSum / bin.count : null,
+      observedRate: bin.count ? bin.observedSum / bin.count : null
+    }));
+    const ece = total ? bins.reduce((sum, bin) =>
+      sum + Math.abs((bin.count ? bin.predictedSum / bin.count : 0) -
+        (bin.count ? bin.observedSum / bin.count : 0)) * bin.count, 0) / total : null;
+    const mce = total ? Math.max(0, ...bins.filter((bin) => bin.count).map((bin) =>
+      Math.abs(bin.predictedSum / bin.count - bin.observedSum / bin.count))) : null;
+    result[outcome] = { bins: populated, expectedCalibrationError: ece, maximumCalibrationError: mce, sampleSize: total };
+  }
+  return result;
+}
+
+/** Per-league scorecards use only each fixture's out-of-sample forecast. */
+export function evaluatePerformanceByLeague(predictions) {
+  if (!Array.isArray(predictions)) throw new TypeError("predictions must be an array");
+  const groups = new Map();
+  predictions.forEach((prediction) => {
+    const league = typeof prediction.league === "string" && prediction.league.trim()
+      ? prediction.league.trim() : "Unknown league";
+    if (!groups.has(league)) groups.set(league, []);
+    groups.get(league).push(prediction);
+  });
+  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([league, rows]) => {
+    const calibratedOnly = rows.filter((item) => item.calibrationStatus === "fitted_on_prior_forecasts");
+    return {
+      league,
+      sampleSize: rows.length,
+      rawMetrics: calculateForecastMetrics(rows, "raw"),
+      calibratedMetrics: calculateForecastMetrics(rows, "calibrated"),
+      calibrationMetrics: calculateForecastMetrics(calibratedOnly, "calibrated"),
+      calibrationSamples: calibratedOnly.length
+    };
+  });
+}
+
 /**
  * Expanding-window, date-ordered evaluation. Every fixture is predicted using
  * strictly earlier calendar dates; calibration uses only earlier out-of-sample
@@ -531,6 +603,7 @@ export function walkForwardBacktest(matches, options = {}) {
       }
       predictions.push({
         date: fixture.date,
+        league: typeof fixture.league === "string" && fixture.league.trim() ? fixture.league.trim() : "Unknown league",
         homeTeam: fixture.homeTeam,
         awayTeam: fixture.awayTeam,
         homeGoals: fixture.homeGoals,
@@ -563,6 +636,9 @@ export function walkForwardBacktest(matches, options = {}) {
     rawMetrics: calculateForecastMetrics(predictions, "raw"),
     calibratedMetrics: calculateForecastMetrics(predictions, "calibrated"),
     calibrationMetrics: calculateForecastMetrics(calibratedPredictions, "calibrated"),
+    reliability: calculateReliabilityBins(predictions, "calibrated", options.calibrationBinCount ?? 10),
+    reliabilityRaw: calculateReliabilityBins(predictions, "raw", options.calibrationBinCount ?? 10),
+    leagueMetrics: evaluatePerformanceByLeague(predictions),
     settings: { minTrainingMatches, minTeamAppearances, calibrationMinSamples, rho, maxGoals,
       recencyDecay, priorMatches, homeAdvantage, kFactor }
   };
