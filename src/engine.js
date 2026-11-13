@@ -317,3 +317,253 @@ export function estimateElo(matches, homeTeam, awayTeam, options = {}) {
     ratings: Object.fromEntries([...ratings.entries()].sort(([a], [b]) => a.localeCompare(b)))
   };
 }
+
+
+function validateOutcome(value) {
+  if (!["home", "draw", "away"].includes(value)) {
+    throw new RangeError("outcome must be home, draw, or away");
+  }
+}
+
+function validateThreeWayProbabilities(probabilities) {
+  if (!probabilities || typeof probabilities !== "object") {
+    throw new TypeError("probabilities must be an object");
+  }
+  const values = [probabilities.home, probabilities.draw, probabilities.away];
+  if (values.some((value) => !Number.isFinite(value) || value < 0 || value > 1)) {
+    throw new RangeError("home, draw, and away probabilities must be between 0 and 1");
+  }
+  const total = values.reduce((sum, value) => sum + value, 0);
+  if (Math.abs(total - 1) > 1e-6) {
+    throw new RangeError("three-way probabilities must sum to one");
+  }
+  return values;
+}
+
+function meanLogLoss(rows, outcomes, temperature = 1) {
+  const epsilon = 1e-15;
+  return rows.reduce((sum, probabilities, index) => {
+    const calibrated = applyTemperatureScaling(probabilities, temperature);
+    return sum - Math.log(Math.max(epsilon, calibrated[outcomes[index]]));
+  }, 0) / rows.length;
+}
+
+/** Apply multiclass temperature scaling to a 1X2 probability triplet. */
+export function applyTemperatureScaling(probabilities, temperature = 1) {
+  const [home, draw, away] = validateThreeWayProbabilities(probabilities);
+  if (!Number.isFinite(temperature) || temperature < 0.05 || temperature > 10) {
+    throw new RangeError("temperature must be between 0.05 and 10");
+  }
+  const powered = [home, draw, away].map((value) => value === 0 ? 0 : value ** (1 / temperature));
+  const total = powered.reduce((sum, value) => sum + value, 0);
+  if (!Number.isFinite(total) || total <= 0) {
+    throw new RangeError("temperature scaling could not normalize probabilities");
+  }
+  return { home: powered[0] / total, draw: powered[1] / total, away: powered[2] / total };
+}
+
+/**
+ * Fit a single multiclass temperature using only an explicitly supplied
+ * chronological calibration sample. Lower log loss is the optimization target.
+ */
+export function fitTemperatureScaling(probabilityRows, outcomes, options = {}) {
+  if (!Array.isArray(probabilityRows) || !Array.isArray(outcomes) ||
+      probabilityRows.length !== outcomes.length) {
+    throw new TypeError("probabilityRows and outcomes must be equal-length arrays");
+  }
+  const minSamples = options.minSamples ?? 10;
+  if (!Number.isInteger(minSamples) || minSamples < 2) {
+    throw new RangeError("minSamples must be an integer of at least 2");
+  }
+  if (probabilityRows.length < minSamples) {
+    throw new RangeError(`at least ${minSamples} calibration samples are required`);
+  }
+  probabilityRows.forEach(validateThreeWayProbabilities);
+  outcomes.forEach(validateOutcome);
+
+  const beforeLogLoss = meanLogLoss(probabilityRows, outcomes, 1);
+  let left = 0.05;
+  let right = 10;
+  const ratio = (Math.sqrt(5) - 1) / 2;
+  let x1 = right - ratio * (right - left);
+  let x2 = left + ratio * (right - left);
+  let f1 = meanLogLoss(probabilityRows, outcomes, x1);
+  let f2 = meanLogLoss(probabilityRows, outcomes, x2);
+  for (let iteration = 0; iteration < 80; iteration += 1) {
+    if (f1 <= f2) {
+      right = x2;
+      x2 = x1;
+      f2 = f1;
+      x1 = right - ratio * (right - left);
+      f1 = meanLogLoss(probabilityRows, outcomes, x1);
+    } else {
+      left = x1;
+      x1 = x2;
+      f1 = f2;
+      x2 = left + ratio * (right - left);
+      f2 = meanLogLoss(probabilityRows, outcomes, x2);
+    }
+  }
+  const temperature = (left + right) / 2;
+  const afterLogLoss = meanLogLoss(probabilityRows, outcomes, temperature);
+  return {
+    temperature,
+    sampleSize: probabilityRows.length,
+    beforeLogLoss,
+    afterLogLoss,
+    improved: afterLogLoss < beforeLogLoss - 1e-12
+  };
+}
+
+function calculateForecastMetrics(predictions, probabilityKey) {
+  if (!predictions.length) return null;
+  let logLoss = 0;
+  let brierScore = 0;
+  let correct = 0;
+  predictions.forEach((prediction) => {
+    const probabilities = prediction[probabilityKey];
+    const actual = prediction.actual;
+    const actualProbability = probabilities[actual];
+    logLoss -= Math.log(Math.max(1e-15, actualProbability));
+    brierScore += ["home", "draw", "away"].reduce((sum, outcome) =>
+      sum + (probabilities[outcome] - (outcome === actual ? 1 : 0)) ** 2, 0);
+    const predicted = ["home", "draw", "away"].reduce((best, outcome) =>
+      probabilities[outcome] > probabilities[best] ? outcome : best, "home");
+    if (predicted === actual) correct += 1;
+  });
+  return {
+    sampleSize: predictions.length,
+    logLoss: logLoss / predictions.length,
+    brierScore: brierScore / predictions.length,
+    accuracy: correct / predictions.length
+  };
+}
+
+/**
+ * Expanding-window, date-ordered evaluation. Every fixture is predicted using
+ * strictly earlier calendar dates; calibration uses only earlier out-of-sample
+ * forecasts. Same-day fixtures are never allowed into one another's training set.
+ */
+export function walkForwardBacktest(matches, options = {}) {
+  if (!Array.isArray(matches)) throw new TypeError("matches must be an array");
+  const minTrainingMatches = options.minTrainingMatches ?? 30;
+  const minTeamAppearances = options.minTeamAppearances ?? 5;
+  const calibrationMinSamples = options.calibrationMinSamples ?? 20;
+  const rho = options.rho ?? -0.08;
+  const maxGoals = options.maxGoals ?? 12;
+  const recencyDecay = options.recencyDecay ?? 0.95;
+  const priorMatches = options.priorMatches ?? 5;
+  const homeAdvantage = options.homeAdvantage ?? 60;
+  const kFactor = options.kFactor ?? 20;
+  if (!Number.isInteger(minTrainingMatches) || minTrainingMatches < 1) {
+    throw new RangeError("minTrainingMatches must be a positive integer");
+  }
+  if (!Number.isInteger(minTeamAppearances) || minTeamAppearances < 1) {
+    throw new RangeError("minTeamAppearances must be a positive integer");
+  }
+  if (!Number.isInteger(calibrationMinSamples) || calibrationMinSamples < 2) {
+    throw new RangeError("calibrationMinSamples must be at least 2");
+  }
+  if (!Number.isFinite(rho) || rho < -1 || rho > 1) {
+    throw new RangeError("rho must be between -1 and 1");
+  }
+  const eligible = matches.filter((match) => match && validIsoDate(match.date) &&
+    Number.isInteger(match.homeGoals) && match.homeGoals >= 0 &&
+    Number.isInteger(match.awayGoals) && match.awayGoals >= 0 &&
+    typeof match.homeTeam === "string" && match.homeTeam.trim() &&
+    typeof match.awayTeam === "string" && match.awayTeam.trim() &&
+    match.homeTeam !== match.awayTeam)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const predictions = [];
+  const skipped = [];
+  for (let index = 0; index < eligible.length; index += 1) {
+    const fixture = eligible[index];
+    const training = eligible.slice(0, index).filter((match) => match.date < fixture.date);
+    if (training.length < minTrainingMatches) {
+      skipped.push({ date: fixture.date, homeTeam: fixture.homeTeam, awayTeam: fixture.awayTeam,
+        reason: "insufficient_prior_matches", trainingMatches: training.length });
+      continue;
+    }
+    const homeAppearances = training.filter((match) =>
+      match.homeTeam === fixture.homeTeam || match.awayTeam === fixture.homeTeam).length;
+    const awayAppearances = training.filter((match) =>
+      match.homeTeam === fixture.awayTeam || match.awayTeam === fixture.awayTeam).length;
+    if (homeAppearances < minTeamAppearances || awayAppearances < minTeamAppearances) {
+      skipped.push({ date: fixture.date, homeTeam: fixture.homeTeam, awayTeam: fixture.awayTeam,
+        reason: "insufficient_team_history", homeAppearances, awayAppearances });
+      continue;
+    }
+    try {
+      const lambdas = estimateLambdas(training, fixture.homeTeam, fixture.awayTeam, {
+        limit: 20, recencyDecay, priorMatches, cutoffDate: fixture.date
+      });
+      const matrix = dixonColesScoreMatrix(lambdas.lambdaHome, lambdas.lambdaAway, rho, maxGoals);
+      const raw = matchProbabilities(matrix);
+      const actual = fixture.homeGoals > fixture.awayGoals ? "home"
+        : fixture.homeGoals === fixture.awayGoals ? "draw" : "away";
+
+      // Calibrator only sees forecasts that occurred strictly before this fixture's date.
+      const priorCalibration = predictions.filter((item) => item.date < fixture.date);
+      let temperature = 1;
+      let calibrationStatus = "warming_up";
+      if (priorCalibration.length >= calibrationMinSamples) {
+        const fitted = fitTemperatureScaling(
+          priorCalibration.map((item) => item.raw),
+          priorCalibration.map((item) => item.actual),
+          { minSamples: calibrationMinSamples }
+        );
+        temperature = fitted.temperature;
+        calibrationStatus = "fitted_on_prior_forecasts";
+      }
+      const calibrated = applyTemperatureScaling(
+        { home: raw.home, draw: raw.draw, away: raw.away }, temperature
+      );
+      let elo = null;
+      try {
+        const rating = estimateElo(training, fixture.homeTeam, fixture.awayTeam, {
+          homeAdvantage, kFactor, cutoffDate: fixture.date
+        });
+        elo = { homeRating: rating.homeRating, awayRating: rating.awayRating,
+          ratingDifference: rating.ratingDifference, expectedHomeScore: rating.expectedHomeScore };
+      } catch {
+        // Elo is a diagnostic alongside the primary Poisson/DC forecast.
+      }
+      predictions.push({
+        date: fixture.date,
+        homeTeam: fixture.homeTeam,
+        awayTeam: fixture.awayTeam,
+        homeGoals: fixture.homeGoals,
+        awayGoals: fixture.awayGoals,
+        actual,
+        raw: { home: raw.home, draw: raw.draw, away: raw.away },
+        calibrated,
+        lambdaHome: lambdas.lambdaHome,
+        lambdaAway: lambdas.lambdaAway,
+        trainingMatches: training.length,
+        homeAppearances,
+        awayAppearances,
+        calibrationTemperature: temperature,
+        calibrationStatus,
+        elo
+      });
+    } catch (error) {
+      skipped.push({ date: fixture.date, homeTeam: fixture.homeTeam, awayTeam: fixture.awayTeam,
+        reason: "model_error", message: error.message });
+    }
+  }
+  const calibratedPredictions = predictions.filter((item) => item.calibrationStatus === "fitted_on_prior_forecasts");
+  return {
+    predictions,
+    skipped,
+    totalValidFixtures: eligible.length,
+    evaluated: predictions.length,
+    skippedCount: skipped.length,
+    calibrationSamples: calibratedPredictions.length,
+    rawMetrics: calculateForecastMetrics(predictions, "raw"),
+    calibratedMetrics: calculateForecastMetrics(predictions, "calibrated"),
+    calibrationMetrics: calculateForecastMetrics(calibratedPredictions, "calibrated"),
+    settings: { minTrainingMatches, minTeamAppearances, calibrationMinSamples, rho, maxGoals,
+      recencyDecay, priorMatches, homeAdvantage, kFactor }
+  };
+}
