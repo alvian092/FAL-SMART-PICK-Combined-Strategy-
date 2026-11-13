@@ -32,14 +32,14 @@ test("market walk-forward excludes same-day fixtures and settles only with suppl
   });
   const market = result.markets[0];
   assert.equal(result.method.includes("same-day and future fixtures excluded"), true);
-  assert.equal(market.evaluated, 3);
-  assert.equal(market.settledBets, 3);
+  assert.equal(market.evaluated, 9);
+  assert.equal(market.settledBets, 9);
   const sameDay = market.predictions.filter((row) => row.date === "2025-01-17");
   assert.equal(sameDay.length, 2);
   assert.ok(sameDay.every((row) => row.trainingMatches === 16));
   assert.ok(sameDay.every((row) => row.homeAppearances === 16 && row.awayAppearances === 16));
-  assert.equal(market.summary.totalStake, 30);
-  assert.equal(market.summary.bets, 3);
+  assert.equal(market.summary.totalStake, 90);
+  assert.equal(market.summary.bets, 9);
   assert.ok(market.predictions.every((row) => row.fairOdds > 1));
 });
 
@@ -48,8 +48,8 @@ test("score-only historical data never invents odds or reports ROI from unpriced
     { type: "totalGoals", selection: "over", line: 2.5 }
   ], { minTrainingMatches: 10, minTeamAppearances: 5 });
   const market = result.markets[0];
-  assert.equal(market.evaluated, 3);
-  assert.equal(market.missingOdds, 3);
+  assert.equal(market.evaluated, 9);
+  assert.equal(market.missingOdds, 9);
   assert.equal(market.settledBets, 0);
   assert.equal(market.summary.totalStake, 0);
   assert.equal(market.summary.roi, null);
@@ -78,8 +78,8 @@ test("walk-forward evaluates every supported market family from the same histori
   });
   assert.equal(result.markets.length, descriptors.length);
   for (const market of result.markets) {
-    assert.equal(market.evaluated, 3);
-    assert.equal(market.missingOdds, 3);
+    assert.equal(market.evaluated, 9);
+    assert.equal(market.missingOdds, 9);
     assert.equal(market.settledBets, 0);
     assert.ok(market.predictions.every((row) =>
       row.outcomes && row.fairOdds > 1 && row.settlement === "missing_odds"
