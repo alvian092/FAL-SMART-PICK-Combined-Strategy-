@@ -1,4 +1,4 @@
-import { scoreMatrix, matchProbabilities, fairOdds, expectedValue } from "./engine.js";
+import { scoreMatrix, matchProbabilities, fairOdds, expectedValue, estimateLambdas } from "./engine.js";
 import { parseHistoricalCsv, getHistoricalLeagues, getHistoricalTeams, getHeadToHead } from "./historical.js";
 import "./styles.css";
 
@@ -38,14 +38,17 @@ app.innerHTML = `
         <label>Tim tandang<input id="away" value="Away Team" maxlength="60"></label>
         <label>Lambda kandang<input id="lh" type="number" min="0" max="8" step="0.01" value="1.55"></label>
         <label>Lambda tandang<input id="la" type="number" min="0" max="8" step="0.01" value="1.10"></label>
+        <label>Tanggal analisis<input id="analysis-date" type="date"></label>
       </div>
+      <button id="estimate-lambda" class="secondary">Hitung lambda otomatis · 20 laga</button>
+      <p id="lambda-status" class="import-status" role="status">Pilih tim dan impor riwayat pertandingan untuk menghitung lambda otomatis.</p>
       <button id="analyze" class="primary">Hitung probabilitas</button>
       <p id="error" class="error" role="alert"></p>
     </section>
     <section class="panel">
       <div class="section-heading"><div><p class="eyebrow">02 / MODEL OUTPUT</p><h2 id="match-title">Home Team vs Away Team</h2></div><span class="tag">POISSON BASELINE</span></div>
       <div id="probabilities" class="metric-grid"></div>
-      <p class="notice">Probabilitas dihitung dari lambda yang dimasukkan secara manual. Import historis saat ini untuk pemilihan tim dan H2H; automatic lambda belum diaktifkan.</p>
+      <p class="notice">Lambda dapat dihitung dari maksimal 20 penampilan terakhir setiap tim di semua kompetisi yang diimpor, hanya memakai pertandingan sebelum tanggal analisis. Kamu tetap bisa mengubah lambda secara manual.</p>
     </section>
     <section class="panel">
       <div class="section-heading"><div><p class="eyebrow">03 / VALUE CHECK</p><h2>Evaluasi odds 1X2</h2></div><span class="tag">MANUAL ODDS</span></div>
@@ -63,7 +66,8 @@ app.innerHTML = `
       <ul>
         <li class="done">Foundation · Poisson probability · manual odds</li>
         <li class="done">Historical CSV import · validation · league/team selector · H2H</li>
-        <li>Dixon-Coles · Elo · automatic lambda</li>
+        <li class="done">Automatic lambda · last 20 appearances · venue and opponent adjustment</li>
+        <li>Dixon-Coles · Elo · calibration</li>
         <li>All markets · fair odds · EV · Kelly</li>
         <li>Smart Pick ranking · walk-forward backtest</li>
         <li>Live model · Android APK release</li>
@@ -201,6 +205,43 @@ $("use-teams").addEventListener("click", () => {
   render();
 });
 
+
+function setDefaultAnalysisDate() {
+  const now = new Date();
+  const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  $("analysis-date").value = localDate;
+}
+
+$("estimate-lambda").addEventListener("click", () => {
+  const home = $("home").value.trim();
+  const away = $("away").value.trim();
+  const cutoffDate = $("analysis-date").value;
+  try {
+    if (!historicalMatches.length) throw new Error("Impor CSV historis terlebih dahulu.");
+    if (!home || !away || home === away) throw new Error("Pilih dua tim yang berbeda.");
+    if (!cutoffDate) throw new Error("Isi tanggal analisis terlebih dahulu.");
+    const estimate = estimateLambdas(historicalMatches, home, away, {
+      limit: 20,
+      recencyDecay: 0.95,
+      priorMatches: 5,
+      cutoffDate
+    });
+    $("lh").value = estimate.lambdaHome.toFixed(2);
+    $("la").value = estimate.lambdaAway.toFixed(2);
+    const warnings = [];
+    if (estimate.home.appearances < 10 || estimate.away.appearances < 10) {
+      warnings.push("Sampel kurang dari 10 laga untuk setidaknya satu tim; estimasi lebih tidak pasti.");
+    }
+    if (estimate.usedFallbackBaseline) warnings.push("Rata-rata gol historis nol; baseline default dipakai.");
+    if (estimate.clamped) warnings.push("Lambda dibatasi pada rentang 0–8.");
+    $("lambda-status").textContent =
+      `Lambda otomatis berhasil · ${home}: ${estimate.home.appearances} laga (${estimate.home.oldestDate}–${estimate.home.newestDate}) · ${away}: ${estimate.away.appearances} laga (${estimate.away.oldestDate}–${estimate.away.newestDate}) · semua kompetisi, sebelum ${cutoffDate}. Baseline kandang/tandang: ${estimate.baselineHome.toFixed(2)} / ${estimate.baselineAway.toFixed(2)} gol. ${warnings.join(" ")}`;
+    render();
+  } catch (error) {
+    $("lambda-status").textContent = error.message;
+  }
+});
+
 function render() {
   try {
     $("error").textContent = "";
@@ -229,6 +270,7 @@ function render() {
 }
 $("analyze").addEventListener("click", render);
 ["home","away","lh","la","oh","od","oa"].forEach((id) => $(id).addEventListener("change", render));
+setDefaultAnalysisDate();
 updateTeamSelectors();
 if (historicalMatches.length) {
   $("import-status").textContent = `Memuat ${historicalMatches.length} pertandingan historis tersimpan di perangkat ini.`;
