@@ -462,30 +462,38 @@ function renderMarkets(matrix) {
       pct(o.halfWin) + "</td><td>" + pct(o.push) + "</td><td>" + pct(o.halfLoss) + "</td><td>" +
       pct(o.loss) + "</td><td data-field=\"fair\">" + (market.fairOdds === null ? "—" : num(market.fairOdds)) +
       "</td><td><input class=\"market-odds\" type=\"number\" min=\"1.01\" step=\"0.01\" inputmode=\"decimal\" placeholder=\"Odds\" data-descriptor=\"" +
-      escapeHtml(descriptor) + "\"></td><td data-field=\"ev\">—</td><td data-field=\"kelly\">—</td></tr>";
+      escapeHtml(descriptor) + "\"></td><td><input class="market-stake" type="number" min="0.01" step="any" inputmode="decimal" placeholder="Stake"></td>" +
+      "<td data-field="roi">—</td><td data-field="pl">—</td><td data-field="kelly">—</td></tr>";
   }).join("");
   $("market-output").innerHTML = "<table class=\"league-table market-table\"><thead><tr><th>Market</th><th>Pick</th>" +
     "<th>Line</th><th>Win</th><th>½ Win</th><th>Push</th><th>½ Loss</th><th>Loss</th><th>Fair odds</th>" +
-    "<th>Odds input</th><th>EV</th><th>Kelly</th></tr></thead><tbody>" + rows + "</tbody></table>";
+    "<th>Odds</th><th>Stake</th><th>ROI / EV</th><th>Expected P/L</th><th>Kelly</th></tr></thead><tbody>" + rows + "</tbody></table>";
   $("market-status").textContent = markets.length + " pilihan pasar tersedia · fair odds dihitung dari settlement matrix.";
 }
 
 $("market-output").addEventListener("input", (event) => {
   const input = event.target;
-  if (!input.classList.contains("market-odds") || !lastMarketMatrix) return;
+  if ((!input.classList.contains("market-odds") && !input.classList.contains("market-stake")) || !lastMarketMatrix) return;
   const row = input.closest("tr");
-  const descriptor = JSON.parse(input.dataset.descriptor);
-  const odds = input.value.trim() === "" ? null : Number(input.value);
+  const oddsInput = row.querySelector(".market-odds");
+  const stakeInput = row.querySelector(".market-stake");
+  const descriptor = JSON.parse(oddsInput.dataset.descriptor);
+  const odds = oddsInput.value.trim() === "" ? null : Number(oddsInput.value);
+  const stake = stakeInput.value.trim() === "" ? null : Number(stakeInput.value);
   try {
     const result = evaluateMarket(lastMarketMatrix, descriptor, odds);
     row.querySelector('[data-field="fair"]').textContent = result.fairOdds === null ? "—" : num(result.fairOdds);
-    row.querySelector('[data-field="ev"]').textContent = result.expectedValue === null ? "—" : pct(result.expectedValue);
+    row.querySelector('[data-field="roi"]').textContent = result.expectedValue === null ? "—" : pct(result.expectedValue);
+    row.querySelector('[data-field="pl"]').textContent =
+      result.expectedValue === null || !Number.isFinite(stake) || stake <= 0 ? "—" : num(result.expectedValue * stake);
     row.querySelector('[data-field="kelly"]').textContent = result.kellyFraction === null ? "—" : pct(result.kellyFraction);
-    input.setCustomValidity("");
+    oddsInput.setCustomValidity("");
+    stakeInput.setCustomValidity("");
   } catch (error) {
-    row.querySelector('[data-field="ev"]').textContent = "—";
+    row.querySelector('[data-field="roi"]').textContent = "—";
+    row.querySelector('[data-field="pl"]').textContent = "—";
     row.querySelector('[data-field="kelly"]').textContent = "—";
-    input.setCustomValidity(error.message);
+    (input.classList.contains("market-odds") ? oddsInput : stakeInput).setCustomValidity(error.message);
   }
 });
 
