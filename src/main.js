@@ -552,7 +552,10 @@ $("smart-odds-file").addEventListener("change", async (event) => {
     const result = parseHistoricalOddsCsv(await file.text());
     historicalOdds = result.rows;
     localStorage.setItem("fal-historical-odds", JSON.stringify(historicalOdds));
-    $("smart-odds-status").textContent = historicalOdds.length + " odds valid · " + result.errors.length + " baris ditolak.";
+    const timestampReady = historicalOdds.filter(row => row.kickoffUtc && row.oddsTimestampUtc &&
+      Date.parse(row.oddsTimestampUtc) < Date.parse(row.kickoffUtc)).length;
+    $("smart-odds-status").textContent = historicalOdds.length + " odds valid · " + timestampReady +
+      " memiliki timestamp entry sebelum kickoff · " + result.errors.length + " baris ditolak.";
     if (result.errors.length) {
       $("smart-odds-status").textContent += " Contoh error: " + result.errors.slice(0, 4).map(item => "baris " + item.row + ": " + item.message).join(" | ");
     }
@@ -580,15 +583,36 @@ $("run-smart-backtest").addEventListener("click", () => {
       minTrainingMatches: Number($("smart-backtest-min").value),
       minTeamAppearances: 5,
       pickOptions,
-      candidateProvider: (fixture) => historicalOdds.filter(row =>
-        row.date === fixture.date && row.homeTeam === fixture.homeTeam &&
-        row.awayTeam === fixture.awayTeam && (!row.league || !fixture.league || row.league === fixture.league)
-      ).map((row, index) => ({
-        id: "historical-" + index,
-        descriptor: row.descriptor,
-        odds: row.odds,
-        closingOdds: row.closingOdds
-      }))
+      candidateProvider: (fixture) => {
+        const normalize = (value) => String(value ?? "").normalize("NFKC").trim().replace(/\\s+/g, " ").toLocaleLowerCase();
+        const matching = historicalOdds.filter(row =>
+          row.date === fixture.date &&
+          normalize(row.homeTeam) === normalize(fixture.homeTeam) &&
+          normalize(row.awayTeam) === normalize(fixture.awayTeam) &&
+          (!row.league || normalize(row.league) === normalize(fixture.league))
+        );
+        const eligible = matching.filter(row =>
+          row.kickoffUtc && row.oddsTimestampUtc &&
+          Date.parse(row.oddsTimestampUtc) < Date.parse(row.kickoffUtc)
+        );
+        const seen = new Set();
+        return eligible.filter(row => {
+          const d = row.descriptor;
+          const key = [d.type, d.selection ?? "", d.team ?? "", d.line ?? "",
+            d.homeGoals ?? "", d.awayGoals ?? ""].join("|");
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        }).map((row, index) => ({
+          id: "historical-" + index,
+          descriptor: row.descriptor,
+          odds: row.odds,
+          closingOdds: row.closingOddsTimestampUtc &&
+            Date.parse(row.closingOddsTimestampUtc) >= Date.parse(row.oddsTimestampUtc) &&
+            Date.parse(row.closingOddsTimestampUtc) <= Date.parse(row.kickoffUtc)
+              ? row.closingOdds : null
+        }));
+      }
     });
     const s = result.summary;
     const metric = (value) => value === null || value === undefined ? "—" : pct(value);
