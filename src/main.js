@@ -309,8 +309,12 @@ $("run-backtest").addEventListener("click", () => {
           </div>
         </div>`;
     };
-    const reliabilityHtml = ["home", "draw", "away"].map((outcome) =>
-      reliability(`Reliability · ${outcome.toUpperCase()}`, result.reliability[outcome])).join("");
+    const reliabilityHtml = ["raw", "calibrated"].map((kind) => {
+      const dataset = kind === "raw" ? result.reliabilityRaw : result.reliability;
+      const label = kind === "raw" ? "Raw · semua prediksi" : "Calibrated-only · setelah warm-up";
+      return ["home", "draw", "away"].map((outcome) =>
+        reliability(`Reliability ${label} · ${outcome.toUpperCase()}`, dataset[outcome])).join("");
+    }).join("");
     const leagueRows = result.leagueMetrics.map((league) => {
       const rawLeague = league.rawMetrics;
       const calLeague = league.calibratedMetrics;
