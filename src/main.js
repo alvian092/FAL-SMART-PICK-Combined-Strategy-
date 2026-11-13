@@ -315,7 +315,7 @@ $("run-interval-backtest").addEventListener("click", () => {
     const rows = Object.entries(result.coverage).map(([key, item]) => {
       const label = ({ homeGoals: "Gol kandang", awayGoals: "Gol tandang",
         totalGoals: "Total gol", goalDifference: "Selisih gol" })[key];
-      return "<div class=\\"reliability-row\\"><span>" + label + "</span><span>" +
+      return "<div class=\"reliability-row\"><span>" + label + "</span><span>" +
         (item.empiricalCoverage === null ? "—" : pct(item.empiricalCoverage)) +
         "</span><span>" + item.covered + "/" + item.sampleSize + "</span><span>" +
         (item.meanWidth === null ? "—" : item.meanWidth.toFixed(2)) + "</span></div>";
@@ -324,14 +324,14 @@ $("run-interval-backtest").addEventListener("click", () => {
       "Selesai · " + result.evaluated + " interval diuji · " + result.skippedCount +
       " prediksi dilewati karena riwayat belum cukup.";
     $("interval-backtest-output").innerHTML =
-      "<div class=\\"backtest-group\\"><strong>Empirical predictive-interval coverage · nominal " +
+      "<div class=\"backtest-group\"><strong>Empirical predictive-interval coverage · nominal " +
       pct(result.confidenceLevel) + "</strong>" +
-      "<p class=\\"notice\\">Coverage adalah proporsi skor aktual yang jatuh di dalam rentang prediktif out-of-sample. " +
+      "<p class=\"notice\">Coverage adalah proporsi skor aktual yang jatuh di dalam rentang prediktif out-of-sample. " +
       "Ini berbeda dari interval probabilitas dan bukan jaminan bahwa coverage masa depan akan sama. " +
-      "Nilai sampel kecil masih tidak stabil.</p><div class=\\"reliability-table\\">" +
-      "<div class=\\"reliability-row reliability-head\\"><span>Target</span><span>Coverage</span>" +
+      "Nilai sampel kecil masih tidak stabil.</p><div class=\"reliability-table\">" +
+      "<div class=\"reliability-row reliability-head\"><span>Target</span><span>Coverage</span>" +
       "<span>Tercakup/n</span><span>Lebar rata-rata</span></div>" + rows + "</div>" +
-      "<p class=\\"notice\\">Bootstrap per fixture: " + result.iterations +
+      "<p class=\"notice\">Bootstrap per fixture: " + result.iterations +
       " iterasi · hanya pertandingan sebelum tanggal target · hasil aktual diuji pada gol kandang, " +
       "gol tandang, total gol, dan selisih gol.</p></div>";
   } catch (error) {
