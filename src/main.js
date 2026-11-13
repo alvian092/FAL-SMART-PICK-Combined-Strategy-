@@ -1,4 +1,4 @@
-import { dixonColesScoreMatrix, matchProbabilities, fairOdds, expectedValue, estimateLambdas, estimateElo } from "./engine.js";
+import { dixonColesScoreMatrix, matchProbabilities, fairOdds, expectedValue, estimateLambdas, estimateElo, walkForwardBacktest } from "./engine.js";
 import { parseHistoricalCsv, getHistoricalLeagues, getHistoricalTeams, getHeadToHead } from "./historical.js";
 import "./styles.css";
 
@@ -62,7 +62,7 @@ app.innerHTML = `
       <div id="value-output" class="value-output"></div>
       <p class="notice">EV adalah estimasi matematis, bukan jaminan hasil. Periksa kualitas data, margin, dan ketidakpastian model sebelum mengambil keputusan.</p>
     </section>
-    <section class="panel roadmap">
+    <section class="panel backtest-panel">\n      <div class="section-heading"><div><p class="eyebrow">04 / MODEL VALIDATION</p><h2>Walk-forward backtest</h2></div><span class="tag">TIME ORDERED</span></div>\n      <p class="muted compact">Uji prediksi historis secara kronologis. Setiap pertandingan hanya diprediksi memakai data dari tanggal sebelumnya; kalibrasi hanya memakai prediksi out-of-sample yang lebih lama. Pertandingan yang datanya belum cukup akan dilewati dan dilaporkan.</p>\n      <button id="run-backtest" class="secondary">Jalankan walk-forward backtest</button>\n      <p id="backtest-status" class="import-status" role="status">Impor database CSV untuk mengevaluasi model.</p>\n      <div id="backtest-output" class="backtest-output"></div>\n    </section>\n    <section class="panel roadmap">
       <p class="eyebrow">DEVELOPMENT ROADMAP</p>
       <h2>Build in verified stages</h2>
       <ul>
@@ -70,7 +70,7 @@ app.innerHTML = `
         <li class="done">Historical CSV import · validation · league/team selector · H2H</li>
         <li class="done">Automatic lambda · last 20 appearances · venue and opponent adjustment</li>
         <li class="done">Dixon-Coles low-score correction · chronological Elo ratings</li>
-        <li>Probability calibration · reliability diagnostics</li>
+        <li class="done">Temperature calibration · log-loss diagnostics</li>\n        <li class="done">Expanding walk-forward backtest · Brier score · log loss · accuracy</li>\n        <li>Reliability diagrams · calibration bins · uncertainty intervals</li>
         <li>All markets · fair odds · EV · Kelly</li>
         <li>Smart Pick ranking · walk-forward backtest</li>
         <li>Live model · Android APK release</li>
@@ -242,6 +242,49 @@ $("estimate-lambda").addEventListener("click", () => {
     render();
   } catch (error) {
     $("lambda-status").textContent = error.message;
+  }
+});
+
+
+$("run-backtest").addEventListener("click", () => {
+  const button = $("run-backtest");
+  button.disabled = true;
+  $("backtest-status").textContent = "Menjalankan pengujian kronologis…";
+  $("backtest-output").replaceChildren();
+  try {
+    if (!historicalMatches.length) throw new Error("Impor CSV historis terlebih dahulu.");
+    const result = walkForwardBacktest(historicalMatches, {
+      minTrainingMatches: 30,
+      minTeamAppearances: 5,
+      calibrationMinSamples: 20,
+      rho: Number($("rho").value)
+    });
+    const metric = (value) => value === null ? "—" : value.toFixed(4);
+    const percent = (value) => value === null ? "—" : pct(value);
+    const raw = result.rawMetrics;
+    const calibrated = result.calibratedMetrics;
+    const calibratedOnly = result.calibrationMetrics;
+    $("backtest-status").textContent =
+      `Selesai · ${result.evaluated} prediksi out-of-sample · ${result.skippedCount} dilewati · ${result.totalValidFixtures} pertandingan valid. ` +
+      (result.calibrationSamples ? `${result.calibrationSamples} prediksi memakai calibrator yang dilatih dari prediksi sebelumnya.` :
+        "Belum cukup prediksi terdahulu untuk mengaktifkan kalibrasi; hasil tetap memakai probabilitas mentah.");
+    const cards = (title, data) => data ? `
+      <div class="backtest-group"><strong>${title} · n=${data.sampleSize}</strong>
+        <div class="backtest-metrics">
+          <span>Log loss<b>${metric(data.logLoss)}</b></span>
+          <span>Brier score<b>${metric(data.brierScore)}</b></span>
+          <span>Accuracy<b>${percent(data.accuracy)}</b></span>
+        </div>
+      </div>` : "";
+    $("backtest-output").innerHTML =
+      cards("Raw model · semua prediksi", raw) +
+      cards("Walk-forward calibrated · termasuk masa warm-up", calibrated) +
+      cards("Calibrated-only · sesudah warm-up", calibratedOnly) +
+      `<p class="notice">Log loss dan Brier score lebih rendah lebih baik; accuracy bukan ukuran kalibrasi. Data yang dilewati tidak dihitung sebagai prediksi. Ini evaluasi historis, bukan jaminan performa masa depan.</p>`;
+  } catch (error) {
+    $("backtest-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
   }
 });
 
