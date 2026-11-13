@@ -177,3 +177,48 @@ test("posterior-predictive score intervals are deterministic and walk-forward co
   assert.ok(first.predictiveIntervals.totalGoals.lower <= first.predictiveIntervals.totalGoals.upper);
   assert.throws(() => walkForwardPredictiveIntervalBacktest(history, { intervalIterations: 10 }), /intervalIterations/i);
 });
+
+
+test("bootstrap intervals exclude same-day and future fixtures from every resample", () => {
+  const matches = makeHistory(24);
+  const options = { cutoffDate: "2025-01-25", iterations: 60, confidenceLevel: 0.9, seed: 991 };
+  const baseline = estimateProbabilityIntervals(matches, "A", "B", options);
+  const contaminated = [
+    ...matches,
+    { date: "2025-01-25", league: "Test League", homeTeam: "A", awayTeam: "B", homeGoals: 30, awayGoals: 0 },
+    { date: "2025-02-20", league: "Test League", homeTeam: "B", awayTeam: "A", homeGoals: 0, awayGoals: 30 }
+  ];
+  const withExcludedRows = estimateProbabilityIntervals(contaminated, "A", "B", options);
+  assert.deepEqual(withExcludedRows, baseline);
+  for (const interval of Object.values(baseline.intervals)) {
+    assert.ok(interval.lower <= interval.median && interval.median <= interval.upper);
+    assert.ok(Number.isFinite(interval.lower) && Number.isFinite(interval.upper));
+  }
+  for (const interval of Object.values(baseline.predictiveIntervals)) {
+    assert.ok(interval.lower <= interval.median && interval.median <= interval.upper);
+    assert.ok(Number.isFinite(interval.lower) && Number.isFinite(interval.upper));
+  }
+});
+
+test("walk-forward predictive intervals are invariant to same-day and future score leakage", () => {
+  const history = makeHistory(42);
+  const options = {
+    minTrainingMatches: 10, minTeamAppearances: 5, calibrationMinSamples: 5,
+    intervalIterations: 50, confidenceLevel: 0.9
+  };
+  const baseline = walkForwardPredictiveIntervalBacktest(history, options);
+  assert.ok(baseline.predictions.length > 0);
+  const target = baseline.predictions[0];
+  const contaminated = [
+    ...history,
+    { date: target.date, league: "Test League", homeTeam: "A", awayTeam: "D", homeGoals: 30, awayGoals: 0 },
+    { date: "2026-01-01", league: "Test League", homeTeam: "D", awayTeam: "A", homeGoals: 0, awayGoals: 30 }
+  ];
+  const extended = walkForwardPredictiveIntervalBacktest(contaminated, options);
+  const sameTarget = extended.predictions.find((row) =>
+    row.date === target.date && row.homeTeam === target.homeTeam && row.awayTeam === target.awayTeam
+  );
+  assert.ok(sameTarget, "the original target fixture should remain evaluated");
+  assert.deepEqual(sameTarget.predictiveIntervals, target.predictiveIntervals);
+  assert.equal(sameTarget.intervalCutoffDate, target.date);
+});
