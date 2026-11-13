@@ -39,6 +39,8 @@ test("handicap and team-total quarter lines use selected-team perspective", () =
 
 test("odd-even and correct-score markets settle exact score outcomes", () => {
   const matrix = singleScore(2, 1);
+  assert.equal(evaluateMarket(matrix, { type: "btts", selection: "yes" }).outcomes.win, 1);
+  assert.equal(evaluateMarket(matrix, { type: "btts", selection: "no" }).outcomes.loss, 1);
   assert.equal(evaluateMarket(matrix, { type: "oddEven", selection: "odd" }).outcomes.win, 1);
   assert.equal(evaluateMarket(matrix, { type: "oddEven", selection: "even" }).outcomes.loss, 1);
   assert.equal(evaluateMarket(matrix, { type: "correctScore", homeGoals: 2, awayGoals: 1 }).outcomes.win, 1);
@@ -65,7 +67,7 @@ test("all-markets builder returns the supported market families with normalized 
     totalsLines: [2.25], handicapLines: [-0.25, 0.25], teamTotalLines: [0.75]
   });
   const types = new Set(markets.map((market) => market.type));
-  for (const type of ["1x2", "doubleChance", "totalGoals", "teamTotal", "handicap", "oddEven", "correctScore"]) {
+  for (const type of ["1x2", "doubleChance", "totalGoals", "teamTotal", "handicap", "btts", "oddEven", "correctScore"]) {
     assert.ok(types.has(type), `missing ${type}`);
   }
   assert.ok(markets.some((market) => market.type === "correctScore" && market.homeGoals === 0 && market.awayGoals === 0));
