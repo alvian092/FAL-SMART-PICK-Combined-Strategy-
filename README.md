@@ -12,6 +12,8 @@ An Android-first Football Analytics Lab project. This repository starts with a s
 - Automatic lambda from each team’s latest 20 appearances across all imported competitions, with venue/opponent adjustment, recency weighting, and a pre-match date cutoff.
 - Dixon-Coles low-score correction for 0–0, 0–1, 1–0, and 1–1 scorelines, with validated rho and normalized score probabilities.
 - Chronological Elo ratings across imported fixtures, with configurable K-factor/home advantage and a strict pre-match cutoff. Elo expected score is shown separately from match-win probability.
+- Multiclass temperature scaling for 1X2 probabilities, fitted by minimizing log loss on prior out-of-sample predictions.
+- Expanding-window walk-forward backtesting with strict calendar-date separation, per-team history gates, skipped-fixture reporting, raw/calibrated log loss, multiclass Brier score, and accuracy.
 - Node.js unit tests.
 - GitHub Actions workflow that tests, builds the web bundle, generates the Android project, assembles a Debug APK, verifies it exists, and uploads it as an artifact.
 
@@ -47,14 +49,16 @@ The GitHub Actions workflow performs this sequence on pushes to `main` and `deve
 - Store prediction timestamp, model version, input snapshot, odds snapshot, and final result for auditability.
 - Do not count H2H records twice when they are already part of each team's match history.
 - Separate probability ranking from value ranking. A high win probability is not automatically positive expected value.
-- Use walk-forward or time-ordered validation; do not tune on the same matches used for evaluation.
+- Use walk-forward or time-ordered validation; do not tune on the same matches used for evaluation. The backtest excludes all same-day fixtures from training, and the temperature calibrator only sees earlier out-of-sample forecasts.
+- Report warm-up and calibrated-only metrics separately; do not imply that calibration is active before enough prior forecasts exist.
 - Treat positive EV as a model estimate, not a guarantee.
 
 ## Planned stages
 
 1. Historical CSV import, validation, team/league selector, and H2H.
 2. Automatic lambda with home/away strength and opponent adjustment.
-3. Dixon-Coles low-score adjustment and chronological Elo ratings with regression tests (implemented); probability calibration and reliability diagnostics remain planned.
+3. Dixon-Coles low-score adjustment and chronological Elo ratings with regression tests (implemented).
+4. Temperature calibration and leakage-safe expanding walk-forward evaluation (implemented); reliability diagrams, calibration bins, and uncertainty intervals remain planned.
 4. All requested markets with correct Asian line settlement and fair odds.
 5. Combined Smart Pick ranking, uncertainty gates, and NO BET.
 6. Walk-forward backtesting, ROI, yield, CLV, drawdown, and calibration.
