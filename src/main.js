@@ -280,7 +280,51 @@ $("run-backtest").addEventListener("click", () => {
       cards("Raw model · semua prediksi", raw) +
       cards("Walk-forward calibrated · termasuk masa warm-up", calibrated) +
       cards("Calibrated-only · sesudah warm-up", calibratedOnly) +
+      `` +
       `<p class="notice">Log loss dan Brier score lebih rendah lebih baik; accuracy bukan ukuran kalibrasi. Data yang dilewati tidak dihitung sebagai prediksi. Ini evaluasi historis, bukan jaminan performa masa depan.</p>`;
+
+    const formatBin = (value) => value === null ? "—" : pct(value);
+    const reliability = (title, data) => {
+      const bins = data.bins;
+      const rows = bins.map((bin) => `
+        <div class="reliability-row">
+          <span>${Math.round(bin.lower * 100)}–${Math.round(bin.upper * 100)}%</span>
+          <span>${bin.count ? formatBin(bin.meanPredicted) : "—"}</span>
+          <span>${bin.count ? formatBin(bin.observedRate) : "—"}</span>
+          <span>${bin.count}</span>
+        </div>`).join("");
+      const points = bins.filter((bin) => bin.count);
+      const dots = points.map((bin) => `<span class="reliability-dot" style="left:${bin.meanPredicted * 100}%;bottom:${bin.observedRate * 100}%" title="Prediksi ${pct(bin.meanPredicted)} · Aktual ${pct(bin.observedRate)} · n=${bin.count}"></span>`).join("");
+      return `
+        <div class="backtest-group">
+          <strong>${title} · ECE ${formatBin(data.expectedCalibrationError)} · MCE ${formatBin(data.maximumCalibrationError)} · n=${data.sampleSize}</strong>
+          <div class="reliability-chart" aria-label="Reliability plot: garis diagonal ideal, titik menunjukkan probabilitas prediksi dan frekuensi aktual">
+            <span class="reliability-diagonal"></span>${dots}
+          </div>
+          <div class="reliability-legend"><span>Y: frekuensi aktual</span><span>X: probabilitas prediksi</span></div>
+          <div class="reliability-table">
+            <div class="reliability-row reliability-head"><span>Bin</span><span>Prediksi</span><span>Aktual</span><span>n</span></div>
+            ${rows}
+          </div>
+        </div>`;
+    };
+    const reliabilityHtml = ["home", "draw", "away"].map((outcome) =>
+      reliability(`Reliability · ${outcome.toUpperCase()}`, result.reliability[outcome])).join("");
+    const leagueRows = result.leagueMetrics.map((league) => {
+      const rawLeague = league.rawMetrics;
+      const calLeague = league.calibratedMetrics;
+      const calOnlyLeague = league.calibrationMetrics;
+      return `<tr><td>${escapeHtml(league.league)}</td><td>${league.sampleSize}</td>
+        <td>${rawLeague ? metric(rawLeague.logLoss) : "—"}</td><td>${rawLeague ? metric(rawLeague.brierScore) : "—"}</td><td>${rawLeague ? percent(rawLeague.accuracy) : "—"}</td>
+        <td>${calLeague ? metric(calLeague.logLoss) : "—"}</td><td>${calLeague ? metric(calLeague.brierScore) : "—"}</td><td>${calOnlyLeague ? league.calibrationSamples : 0}</td></tr>`;
+    }).join("");
+    const leagueHtml = result.leagueMetrics.length ? `
+      <div class="backtest-group"><strong>Performa per liga · prediksi out-of-sample</strong>
+        <div class="table-scroll"><table class="league-table"><thead><tr><th>Liga</th><th>n</th><th>Raw LL</th><th>Raw Brier</th><th>Raw Acc.</th><th>Cal. LL</th><th>Cal. Brier</th><th>Cal. n</th></tr></thead><tbody>${leagueRows}</tbody></table></div>
+        <p class="notice">Bandingkan liga dengan hati-hati: sampel kecil menghasilkan metrik yang tidak stabil. LL = log loss; nilai LL/Brier lebih rendah lebih baik.</p>
+      </div>` : "";
+
+    $("backtest-output").insertAdjacentHTML("beforeend", reliabilityHtml + leagueHtml);
   } catch (error) {
     $("backtest-status").textContent = error.message;
   } finally {
