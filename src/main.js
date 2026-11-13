@@ -1,4 +1,4 @@
-import { dixonColesScoreMatrix, matchProbabilities, fairOdds, expectedValue, estimateLambdas, estimateElo, walkForwardBacktest, estimateProbabilityIntervals } from "./engine.js";
+import { dixonColesScoreMatrix, matchProbabilities, fairOdds, expectedValue, estimateLambdas, estimateElo, walkForwardBacktest, estimateProbabilityIntervals, walkForwardPredictiveIntervalBacktest } from "./engine.js";
 import { parseHistoricalCsv, getHistoricalLeagues, getHistoricalTeams, getHeadToHead } from "./historical.js";
 import "./styles.css";
 
@@ -64,7 +64,10 @@ app.innerHTML = `
       <div id="value-output" class="value-output"></div>
       <p class="notice">EV adalah estimasi matematis, bukan jaminan hasil. Periksa kualitas data, margin, dan ketidakpastian model sebelum mengambil keputusan.</p>
     </section>
-    <section class="panel backtest-panel">\n      <div class="section-heading"><div><p class="eyebrow">04 / MODEL VALIDATION</p><h2>Walk-forward backtest</h2></div><span class="tag">TIME ORDERED</span></div>\n      <p class="muted compact">Uji prediksi historis secara kronologis. Setiap pertandingan hanya diprediksi memakai data dari tanggal sebelumnya; kalibrasi hanya memakai prediksi out-of-sample yang lebih lama. Pertandingan yang datanya belum cukup akan dilewati dan dilaporkan.</p>\n      <button id="run-backtest" class="secondary">Jalankan walk-forward backtest</button>\n      <p id="backtest-status" class="import-status" role="status">Impor database CSV untuk mengevaluasi model.</p>\n      <div id="backtest-output" class="backtest-output"></div>\n    </section>\n    <section class="panel roadmap">
+    <section class="panel backtest-panel">\n      <div class="section-heading"><div><p class="eyebrow">04 / MODEL VALIDATION</p><h2>Walk-forward backtest</h2></div><span class="tag">TIME ORDERED</span></div>\n      <p class="muted compact">Uji prediksi historis secara kronologis. Setiap pertandingan hanya diprediksi memakai data dari tanggal sebelumnya; kalibrasi hanya memakai prediksi out-of-sample yang lebih lama. Pertandingan yang datanya belum cukup akan dilewati dan dilaporkan.</p>\n      <button id="run-backtest" class="secondary">Jalankan walk-forward backtest</button>
+      <button id="run-interval-backtest" class="secondary">Uji coverage uncertainty intervals</button>
+      <p id="interval-backtest-status" class="import-status" role="status">Uji rentang skor prediktif terhadap hasil historis out-of-sample.</p>
+      <div id="interval-backtest-output" class="backtest-output"></div>\n      <p id="backtest-status" class="import-status" role="status">Impor database CSV untuk mengevaluasi model.</p>\n      <div id="backtest-output" class="backtest-output"></div>\n    </section>\n    <section class="panel roadmap">
       <p class="eyebrow">DEVELOPMENT ROADMAP</p>
       <h2>Build in verified stages</h2>
       <ul>
@@ -73,7 +76,7 @@ app.innerHTML = `
         <li class="done">Automatic lambda · last 20 appearances · venue and opponent adjustment</li>
         <li class="done">Dixon-Coles low-score correction · chronological Elo ratings</li>
         <li class="done">Temperature calibration · log-loss diagnostics</li>\n        <li class="done">Expanding walk-forward backtest · Brier score · log loss · accuracy</li>\n        <li class="done">Reliability diagrams · calibration bins · per-league diagnostics</li>
-        <li>Uncertainty intervals</li>
+        <li>Uncertainty intervals · posterior-predictive score ranges · walk-forward coverage validation</li>
         <li>All markets · fair odds · EV · Kelly</li>
         <li>Smart Pick ranking · walk-forward backtest</li>
         <li>Live model · Android APK release</li>
@@ -287,6 +290,48 @@ $("estimate-uncertainty").addEventListener("click", () => {
       <p class="notice">Data historis: ${result.sampleSize} · bootstrap berhasil: ${result.successfulIterations}/${result.iterations} · gagal: ${result.failedIterations}. Input sama menghasilkan hasil yang sama.</p></div>`;
   } catch (error) { $("uncertainty-output").textContent = error.message; }
   finally { button.disabled = false; }
+});
+
+
+$("run-interval-backtest").addEventListener("click", () => {
+  const button = $("run-interval-backtest");
+  button.disabled = true;
+  $("interval-backtest-status").textContent = "Menguji interval prediktif secara kronologis; proses bisa lebih lama untuk database besar…";
+  $("interval-backtest-output").replaceChildren();
+  try {
+    if (!historicalMatches.length) throw new Error("Impor CSV historis terlebih dahulu.");
+    const minTrainingMatches = Math.min(30, Math.max(10, Math.floor(historicalMatches.length * 0.5)));
+    const result = walkForwardPredictiveIntervalBacktest(historicalMatches, {
+      minTrainingMatches, minTeamAppearances: 5, calibrationMinSamples: 20,
+      intervalIterations: 50, confidenceLevel: 0.9, rho: Number($("rho").value)
+    });
+    const rows = Object.entries(result.coverage).map(([key, item]) => {
+      const label = ({ homeGoals: "Gol kandang", awayGoals: "Gol tandang",
+        totalGoals: "Total gol", goalDifference: "Selisih gol" })[key];
+      return "<div class=\\"reliability-row\\"><span>" + label + "</span><span>" +
+        (item.empiricalCoverage === null ? "—" : pct(item.empiricalCoverage)) +
+        "</span><span>" + item.covered + "/" + item.sampleSize + "</span><span>" +
+        (item.meanWidth === null ? "—" : item.meanWidth.toFixed(2)) + "</span></div>";
+    }).join("");
+    $("interval-backtest-status").textContent =
+      "Selesai · " + result.evaluated + " interval diuji · " + result.skippedCount +
+      " prediksi dilewati karena riwayat belum cukup.";
+    $("interval-backtest-output").innerHTML =
+      "<div class=\\"backtest-group\\"><strong>Empirical predictive-interval coverage · nominal " +
+      pct(result.confidenceLevel) + "</strong>" +
+      "<p class=\\"notice\\">Coverage adalah proporsi skor aktual yang jatuh di dalam rentang prediktif out-of-sample. " +
+      "Ini berbeda dari interval probabilitas dan bukan jaminan bahwa coverage masa depan akan sama. " +
+      "Nilai sampel kecil masih tidak stabil.</p><div class=\\"reliability-table\\">" +
+      "<div class=\\"reliability-row reliability-head\\"><span>Target</span><span>Coverage</span>" +
+      "<span>Tercakup/n</span><span>Lebar rata-rata</span></div>" + rows + "</div>" +
+      "<p class=\\"notice\\">Bootstrap per fixture: " + result.iterations +
+      " iterasi · hanya pertandingan sebelum tanggal target · hasil aktual diuji pada gol kandang, " +
+      "gol tandang, total gol, dan selisih gol.</p></div>";
+  } catch (error) {
+    $("interval-backtest-status").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
 });
 
 $("run-backtest").addEventListener("click", () => {
