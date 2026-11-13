@@ -152,6 +152,6 @@ test("bootstrap uncertainty intervals are deterministic, bounded, and pre-date o
     assert.ok(first.intervals[key].lower <= first.intervals[key].median && first.intervals[key].median <= first.intervals[key].upper);
   }
   assert.ok(first.intervals.lambdaHome.lower >= 0 && first.intervals.lambdaHome.upper <= 8);
-  assert.throws(() => estimateProbabilityIntervals(matches, "Alpha", "Beta", { ...options, cutoffDate: "2025-01-24" }), /at least 5 prior appearances|at least 10/i);
+  assert.throws(() => estimateProbabilityIntervals(matches, "Alpha", "Beta", { ...options, cutoffDate: "2025-01-06" }), /at least 10/i);
   assert.throws(() => estimateProbabilityIntervals(matches, "Alpha", "Beta", { ...options, iterations: 10 }), /iterations/i);
 });
