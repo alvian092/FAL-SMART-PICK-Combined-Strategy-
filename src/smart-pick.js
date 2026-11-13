@@ -47,6 +47,7 @@ export function rankSmartPicks(matrix, candidates, options = {}) {
     const id = candidate.id ?? "candidate-" + (index + 1);
     const odds = Number(candidate.odds);
     const reasons = [];
+    const blockingReasons = [];
     if (!Number.isFinite(odds) || odds <= 1) {
       return { id, descriptor: candidate.descriptor, odds: candidate.odds ?? null,
         eligible: false, reasons: ["Odds belum tersedia atau tidak valid."], expectedValue: null,
@@ -58,15 +59,16 @@ export function rankSmartPicks(matrix, candidates, options = {}) {
       sum + (returns[outcome] > 0 ? chance : 0), 0);
     const nonLossProbability = Object.entries(priced.outcomes).reduce((sum, [outcome, chance]) =>
       sum + (returns[outcome] >= -1e-12 ? chance : 0), 0);
-    if (odds < config.minOdds || odds > config.maxOdds) reasons.push("Odds di luar batas yang diizinkan.");
-    if (probability < config.minProbability) reasons.push("Probabilitas hasil positif di bawah batas minimum.");
-    if (priced.expectedValue < config.minExpectedValue) reasons.push("EV di bawah ambang minimum.");
-    if (!(priced.kellyFraction > 0)) reasons.push("Kelly tidak positif; tidak ada keunggulan harga yang layak.");
+    const reject = (reason) => { reasons.push(reason); blockingReasons.push(reason); };
+    if (odds < config.minOdds || odds > config.maxOdds) reject("Odds di luar batas yang diizinkan.");
+    if (probability < config.minProbability) reject("Probabilitas hasil positif di bawah batas minimum.");
+    if (priced.expectedValue < config.minExpectedValue) reject("EV di bawah ambang minimum.");
+    if (!(priced.kellyFraction > 0)) reject("Kelly tidak positif; tidak ada keunggulan harga yang layak.");
     const rawStakeFraction = priced.kellyFraction * config.fractionalKelly;
     const stakeFraction = Math.min(rawStakeFraction, config.maxStakeFraction);
-    if (!(stakeFraction > 0)) reasons.push("Ukuran stake setelah pembatasan risiko adalah nol.");
+    if (!(stakeFraction > 0)) reject("Ukuran stake setelah pembatasan risiko adalah nol.");
     if (stakeFraction < rawStakeFraction) reasons.push("Stake dibatasi oleh batas maksimum bankroll.");
-    const eligible = reasons.every((reason) => reason === "Stake dibatasi oleh batas maksimum bankroll.");
+    const eligible = blockingReasons.length === 0;
     const explanation = [
       "EV " + (priced.expectedValue * 100).toFixed(2) + "%",
       "probabilitas hasil positif " + (probability * 100).toFixed(1) + "%",
@@ -81,10 +83,13 @@ export function rankSmartPicks(matrix, candidates, options = {}) {
     };
   });
 
-  const ranked = evaluated.filter((item) => item.eligible).sort((a, b) =>
-    b.expectedValue - a.expectedValue || b.probability - a.probability ||
-    a.stakeFraction - b.stakeFraction || a.id.localeCompare(b.id)
-  ).map((item, index) => ({ ...item, rank: index + 1 }));
+  const ranked = evaluated.filter((item) => item.eligible).sort((a, b) => {
+    const evDifference = b.expectedValue - a.expectedValue;
+    if (Math.abs(evDifference) > 1e-12) return evDifference;
+    const probabilityDifference = b.probability - a.probability;
+    if (Math.abs(probabilityDifference) > 1e-12) return probabilityDifference;
+    return a.stakeFraction - b.stakeFraction || a.id.localeCompare(b.id);
+  }).map((item, index) => ({ ...item, rank: index + 1 }));
 
   return {
     status: ranked.length ? "BET" : "NO_BET",
