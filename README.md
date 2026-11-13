@@ -9,6 +9,7 @@ An Android-first Football Analytics Lab project. This repository starts with a s
 - 1X2, Over/Under 2.5, and BTTS baseline probabilities.
 - Fair decimal odds, expected value, and no-vig probability helpers.
 - Manual lambda and odds input for an initial vertical slice.
+- Automatic lambda from each team’s latest 20 appearances across all imported competitions, with venue/opponent adjustment, recency weighting, and a pre-match date cutoff.
 - Node.js unit tests.
 - GitHub Actions workflow that tests, builds the web bundle, generates the Android project, assembles a Debug APK, verifies it exists, and uploads it as an artifact.
 
