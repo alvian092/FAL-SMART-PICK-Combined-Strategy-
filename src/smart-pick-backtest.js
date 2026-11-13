@@ -47,7 +47,8 @@ export function walkForwardSmartPickBacktest(matches, options = {}) {
   if (options.candidateProvider !== undefined && typeof options.candidateProvider !== "function") {
     throw new TypeError("candidateProvider must be a function");
   }
-  const pickOptions = validateSmartPickOptions(options.pickOptions ?? {});\n  const initialBankroll = options.initialBankroll ?? 1000;
+  const pickOptions = validateSmartPickOptions(options.pickOptions ?? {});
+  const initialBankroll = options.initialBankroll ?? 1000;
   const minTrainingMatches = options.minTrainingMatches ?? 30;
   const minTeamAppearances = options.minTeamAppearances ?? 5;
   const rho = options.rho ?? -0.08;
