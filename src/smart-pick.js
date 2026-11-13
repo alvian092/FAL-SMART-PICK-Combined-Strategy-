@@ -78,7 +78,7 @@ export function rankSmartPicks(matrix, candidates, options = {}) {
       "stake fractional Kelly " + (stakeFraction * 100).toFixed(2) + "% bankroll"
     ];
     return {
-      id, descriptor: candidate.descriptor, odds, eligible, reasons,
+      id, descriptor: candidate.descriptor, odds, closingOdds: candidate.closingOdds ?? null, eligible, reasons,
       expectedValue: priced.expectedValue, probability, nonLossProbability,
       fairOdds: priced.fairOdds, kellyFraction: priced.kellyFraction,
       stakeFraction, explanation
