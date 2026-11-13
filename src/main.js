@@ -462,8 +462,8 @@ function renderMarkets(matrix) {
       pct(o.halfWin) + "</td><td>" + pct(o.push) + "</td><td>" + pct(o.halfLoss) + "</td><td>" +
       pct(o.loss) + "</td><td data-field=\"fair\">" + (market.fairOdds === null ? "—" : num(market.fairOdds)) +
       "</td><td><input class=\"market-odds\" type=\"number\" min=\"1.01\" step=\"0.01\" inputmode=\"decimal\" placeholder=\"Odds\" data-descriptor=\"" +
-      escapeHtml(descriptor) + "\"></td><td><input class="market-stake" type="number" min="0.01" step="any" inputmode="decimal" placeholder="Stake"></td>" +
-      "<td data-field="roi">—</td><td data-field="pl">—</td><td data-field="kelly">—</td></tr>";
+      escapeHtml(descriptor) + '"></td><td><input class="market-stake" type="number" min="0.01" step="any" inputmode="decimal" placeholder="Stake"></td>' +
+      '<td data-field="roi">—</td><td data-field="pl">—</td><td data-field="kelly">—</td></tr>';
   }).join("");
   $("market-output").innerHTML = "<table class=\"league-table market-table\"><thead><tr><th>Market</th><th>Pick</th>" +
     "<th>Line</th><th>Win</th><th>½ Win</th><th>Push</th><th>½ Loss</th><th>Loss</th><th>Fair odds</th>" +
