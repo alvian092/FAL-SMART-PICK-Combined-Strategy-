@@ -116,9 +116,6 @@ export function parseHistoricalOddsCsv(input) {
       const kickoffUtc = parseTimestamp(record.kickoff_utc, "kickoff_utc");
       const oddsTimestampUtc = parseTimestamp(record.odds_timestamp_utc, "odds_timestamp_utc");
       const closingOddsTimestampUtc = parseTimestamp(record.closing_odds_timestamp_utc, "closing_odds_timestamp_utc");
-      if (closingOdds !== null && !closingOddsTimestampUtc) {
-        throw new RangeError("closing_odds_timestamp_utc is required when closing_odds is supplied");
-      }
       if (kickoffUtc && oddsTimestampUtc && Date.parse(oddsTimestampUtc) >= Date.parse(kickoffUtc)) {
         throw new RangeError("entry odds timestamp must be before kickoff");
       }
