@@ -34,7 +34,7 @@ test("handicap and team-total quarter lines use selected-team perspective", () =
   assert.equal(evaluateMarket(draw, { type: "handicap", team: "home", line: -0.25 }).outcomes.halfLoss, 1);
   assert.equal(evaluateMarket(draw, { type: "handicap", team: "home", line: 0.25 }).outcomes.halfWin, 1);
   assert.equal(evaluateMarket(singleScore(0, 2), { type: "teamTotal", team: "away", selection: "over", line: 1.75 }).outcomes.halfWin, 1);
-  assert.equal(evaluateMarket(singleScore(0, 1), { type: "teamTotal", team: "home", selection: "under", line: 0.75 }).outcomes.halfLoss, 1);
+  assert.equal(evaluateMarket(singleScore(1, 0), { type: "teamTotal", team: "home", selection: "under", line: 0.75 }).outcomes.halfLoss, 1);
 });
 
 test("odd-even and correct-score markets settle exact score outcomes", () => {
