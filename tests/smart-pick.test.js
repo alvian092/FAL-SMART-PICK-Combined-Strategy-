@@ -15,6 +15,8 @@ test("Smart Pick ranks eligible candidates by EV then positive-return probabilit
   assert.equal(result.ranked[0].rank, 1);
   assert.ok(result.ranked[0].expectedValue >= result.ranked[1].expectedValue);
   assert.ok(result.ranked.every((pick) => pick.stakeFraction <= 0.02));
+  assert.match(result.ranked[0].explanation.join(" "), /EV .*minimum/i);
+  assert.match(result.ranked[0].explanation.join(" "), /probabilitas hasil positif .*minimum/i);
   assert.equal(result.rejected.find((pick) => pick.id === "missing").eligible, false);
 });
 
@@ -49,6 +51,7 @@ test("Smart Pick rejects prices outside the configured risk window", () => {
 
 test("Smart Pick validates thresholds and market candidates", () => {
   assert.throws(() => rankSmartPicks(matrix, [], { minProbability: 1.1 }), /between 0 and 1/i);
+  assert.throws(() => rankSmartPicks(matrix, [], { maxStakeFraction: 0.06 }), /hard 5% bankroll cap/i);
   assert.throws(() => rankSmartPicks(matrix, [null]), /requires a market descriptor/i);
 });
 
