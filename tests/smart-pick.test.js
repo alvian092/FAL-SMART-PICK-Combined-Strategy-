@@ -6,8 +6,8 @@ const matrix = [[0.1, 0.2], [0.2, 0.5]];
 
 test("Smart Pick ranks eligible candidates by EV then positive-return probability", () => {
   const result = rankSmartPicks(matrix, [
-    { id: "lower-ev", descriptor: { type: "1x2", selection: "home" }, odds: 2.2 },
-    { id: "higher-ev", descriptor: { type: "1x2", selection: "draw" }, odds: 9.5 },
+    { id: "lower-ev", descriptor: { type: "btts", selection: "yes" }, odds: 2.2 },
+    { id: "higher-ev", descriptor: { type: "1x2", selection: "draw" }, odds: 2.5 },
     { id: "missing", descriptor: { type: "btts", selection: "yes" } }
   ], { minProbability: 0.1, minExpectedValue: -0.5, maxStakeFraction: 0.02 });
   assert.equal(result.status, "BET");
@@ -32,7 +32,7 @@ test("Smart Pick enforces EV and probability thresholds and returns mandatory NO
 
 test("Smart Pick applies fractional Kelly and hard bankroll stake cap", () => {
   const result = rankSmartPicks(matrix, [
-    { descriptor: { type: "1x2", selection: "home" }, odds: 3.5 }
+    { descriptor: { type: "1x2", selection: "draw" }, odds: 3.5 }
   ], { minProbability: 0.1, minExpectedValue: -1, fractionalKelly: 0.5, maxStakeFraction: 0.01 });
   assert.equal(result.status, "BET");
   assert.equal(result.best.stakeFraction, 0.01);
@@ -54,8 +54,8 @@ test("Smart Pick validates thresholds and market candidates", () => {
 
 test("Smart Pick uses positive-return probability as the EV tie-breaker", () => {
   const result = rankSmartPicks(matrix, [
-    { id: "lower-probability", descriptor: { type: "1x2", selection: "draw" }, odds: 7 },
-    { id: "higher-probability", descriptor: { type: "1x2", selection: "home" }, odds: 2 }
+    { id: "lower-probability", descriptor: { type: "1x2", selection: "home" }, odds: 7 },
+    { id: "higher-probability", descriptor: { type: "1x2", selection: "draw" }, odds: 7 / 3 }
   ], { minProbability: 0.1, minExpectedValue: 0.39, maxStakeFraction: 0.02 });
   assert.equal(result.status, "BET");
   assert.equal(result.ranked[0].id, "higher-probability");
