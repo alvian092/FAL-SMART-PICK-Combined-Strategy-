@@ -25,8 +25,8 @@ test("supports CRLF, BOM, quoted team names and optional closing prices", () => 
 test("parses handicap, team total and correct-score market contracts", () => {
   const csv = [
     header,
-    "2025-01-01,L,A,B,handicap,,-0.25,home,,,,2.1,2.0",
-    "2025-01-02,L,A,B,teamTotal,under,1.5,away,,,,1.8,1.9",
+    "2025-01-01,L,A,B,handicap,,-0.25,home,,2.1,2.0",
+    "2025-01-02,L,A,B,teamTotal,under,1.5,away,,1.8,1.9",
     "2025-01-03,L,A,B,correctScore,,,,2,1,8.0,7.5"
   ].join("\n");
   const result = parseHistoricalOddsCsv(csv);
