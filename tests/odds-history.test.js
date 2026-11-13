@@ -60,3 +60,31 @@ test("unpriced or invalid closing odds are rejected instead of fabricating CLV",
   assert.equal(result.rows[0].closingOdds, null);
   assert.equal(result.errors.length, 1);
 });
+
+
+test("rejects invalid market selections and malformed Asian lines at import time", () => {
+  const csv = [
+    header,
+    "2025-01-01,L,A,B,1x2,homeTeam,,,,,2.1,2.0",
+    "2025-01-02,L,A,B,doubleChance,draw,,,,,1.4,1.3",
+    "2025-01-03,L,A,B,totalGoals,over,2.3,,,,1.9,1.8",
+    "2025-01-04,L,A,B,handicap,,0.1,home,,,2.0,1.9",
+    "2025-01-05,L,A,B,btts,maybe,,,,,2.0,1.9"
+  ].join("\n");
+  const result = parseHistoricalOddsCsv(csv);
+  assert.equal(result.rows.length, 0);
+  assert.equal(result.errors.length, 5);
+});
+
+test("accepts valid double-chance, BTTS, odd-even and correct-score descriptors", () => {
+  const csv = [
+    header,
+    "2025-01-01,L,A,B,doubleChance,homeDraw,,,,,1.4,1.3",
+    "2025-01-02,L,A,B,btts,yes,,,,,1.8,1.7",
+    "2025-01-03,L,A,B,oddEven,odd,,,,,1.9,1.8",
+    "2025-01-04,L,A,B,correctScore,,,,2,1,8.0,7.5"
+  ].join("\n");
+  const result = parseHistoricalOddsCsv(csv);
+  assert.equal(result.rows.length, 4);
+  assert.equal(result.errors.length, 0);
+});
