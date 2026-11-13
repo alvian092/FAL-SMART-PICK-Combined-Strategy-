@@ -703,6 +703,24 @@ export function walkForwardBacktest(matches, options = {}) {
     }
   }
 
+  const calibratedPredictions = predictions.filter((item) => item.calibrationStatus === "fitted_on_prior_forecasts");
+  return {
+    predictions,
+    skipped,
+    totalValidFixtures: eligible.length,
+    evaluated: predictions.length,
+    skippedCount: skipped.length,
+    calibrationSamples: calibratedPredictions.length,
+    rawMetrics: calculateForecastMetrics(predictions, "raw"),
+    calibratedMetrics: calculateForecastMetrics(predictions, "calibrated"),
+    calibrationMetrics: calculateForecastMetrics(calibratedPredictions, "calibrated"),
+    reliability: calculateReliabilityBins(calibratedPredictions, "calibrated", options.calibrationBinCount ?? 10),
+    reliabilityRaw: calculateReliabilityBins(predictions, "raw", options.calibrationBinCount ?? 10),
+    leagueMetrics: evaluatePerformanceByLeague(predictions),
+    settings: { minTrainingMatches, minTeamAppearances, calibrationMinSamples, rho, maxGoals,
+      recencyDecay, priorMatches, homeAdvantage, kFactor }
+  };
+}
 /**
  * Walk-forward validation of posterior-predictive score intervals.
  * Every interval is fitted only from fixtures strictly before its target date.
@@ -763,21 +781,3 @@ export function walkForwardPredictiveIntervalBacktest(matches, options = {}) {
     skippedCount: skipped.length, coverage, baseBacktest: base };
 }
 
-  const calibratedPredictions = predictions.filter((item) => item.calibrationStatus === "fitted_on_prior_forecasts");
-  return {
-    predictions,
-    skipped,
-    totalValidFixtures: eligible.length,
-    evaluated: predictions.length,
-    skippedCount: skipped.length,
-    calibrationSamples: calibratedPredictions.length,
-    rawMetrics: calculateForecastMetrics(predictions, "raw"),
-    calibratedMetrics: calculateForecastMetrics(predictions, "calibrated"),
-    calibrationMetrics: calculateForecastMetrics(calibratedPredictions, "calibrated"),
-    reliability: calculateReliabilityBins(calibratedPredictions, "calibrated", options.calibrationBinCount ?? 10),
-    reliabilityRaw: calculateReliabilityBins(predictions, "raw", options.calibrationBinCount ?? 10),
-    leagueMetrics: evaluatePerformanceByLeague(predictions),
-    settings: { minTrainingMatches, minTeamAppearances, calibrationMinSamples, rho, maxGoals,
-      recencyDecay, priorMatches, homeAdvantage, kFactor }
-  };
-}
