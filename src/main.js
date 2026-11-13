@@ -80,7 +80,7 @@ app.innerHTML = `
         <label>Probabilitas positif minimum (%)<input id="smart-min-prob" type="number" min="0" max="100" step="1" value="40"></label>
         <label>EV minimum (%)<input id="smart-min-ev" type="number" step="0.5" value="2"></label>
         <label>Fractional Kelly (%)<input id="smart-fractional-kelly" type="number" min="0" max="100" step="5" value="25"></label>
-        <label>Batas stake / bankroll (%)<input id="smart-max-stake" type="number" min="0" max="100" step="0.25" value="2"></label>
+        <label>Batas stake / bankroll (%)<input id="smart-max-stake" type="number" min="0" max="5" step="0.25" value="2"></label>
         <label>Odds maksimum<input id="smart-max-odds" type="number" min="1.01" step="0.1" value="20"></label>
       </div>
       <button id="run-smart-pick" class="primary">Jalankan Smart Pick</button>
