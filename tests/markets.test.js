@@ -127,3 +127,86 @@ test("market bet summary calculates turnover, net P/L and ROI", () => {
   assert.equal(summary.losses, 1);
   assert.throws(() => summarizeMarketBets([{ stake: 10, profit: 1, outcome: "unknown" }]), /unknown/i);
 });
+
+
+test("all 1X2 selections are validated instead of silently pricing invalid selections as losses", () => {
+  const matrix = [[0.2, 0.3], [0.1, 0.4]];
+  for (const selection of ["home", "draw", "away"]) {
+    const result = evaluateMarket(matrix, { type: "1x2", selection });
+    close(Object.values(result.outcomes).reduce((sum, value) => sum + value, 0), 1);
+  }
+  for (const selection of ["1", "Home", "none", "", null, undefined]) {
+    assert.throws(() => evaluateMarket(matrix, { type: "1x2", selection }), /home, draw, or away/i);
+    assert.throws(() => settleMarketBet({ type: "1x2", selection }, 1, 0, 2), /home, draw, or away/i);
+  }
+});
+
+test("double chance, BTTS, odd-even and correct-score selections reject invalid descriptors", () => {
+  const matrix = [[0.25, 0.25], [0.25, 0.25]];
+  assert.throws(() => evaluateMarket(matrix, { type: "doubleChance", selection: "home" }), /homeDraw/i);
+  assert.throws(() => evaluateMarket(matrix, { type: "btts", selection: "maybe" }), /yes or no/i);
+  assert.throws(() => evaluateMarket(matrix, { type: "oddEven", selection: "both" }), /odd or even/i);
+  assert.throws(() => evaluateMarket(matrix, { type: "correctScore", homeGoals: -1, awayGoals: 0 }), /non-negative integer/i);
+  assert.throws(() => evaluateMarket(matrix, { type: "correctScore", homeGoals: 0.5, awayGoals: 0 }), /non-negative integer/i);
+});
+
+test("settlement truth table covers every score-based market family", () => {
+  const score = (h, a) => singleScore(h, a);
+  const cases = [
+    [{ type: "1x2", selection: "home" }, 2, 1, "win"],
+    [{ type: "1x2", selection: "draw" }, 2, 1, "loss"],
+    [{ type: "1x2", selection: "away" }, 1, 2, "win"],
+    [{ type: "doubleChance", selection: "homeDraw" }, 1, 1, "win"],
+    [{ type: "doubleChance", selection: "homeAway" }, 0, 2, "win"],
+    [{ type: "doubleChance", selection: "drawAway" }, 2, 0, "loss"],
+    [{ type: "totalGoals", selection: "over", line: 2.25 }, 1, 1, "halfLoss"],
+    [{ type: "totalGoals", selection: "under", line: 2.25 }, 1, 1, "halfWin"],
+    [{ type: "totalGoals", selection: "over", line: 2.75 }, 2, 1, "halfWin"],
+    [{ type: "totalGoals", selection: "under", line: 2.75 }, 2, 1, "halfLoss"],
+    [{ type: "teamTotal", team: "home", selection: "over", line: 1.5 }, 2, 0, "win"],
+    [{ type: "teamTotal", team: "away", selection: "under", line: 1.5 }, 2, 1, "win"],
+    [{ type: "handicap", team: "home", line: -0.25 }, 1, 1, "halfLoss"],
+    [{ type: "handicap", team: "home", line: 0.25 }, 1, 1, "halfWin"],
+    [{ type: "btts", selection: "yes" }, 1, 1, "win"],
+    [{ type: "btts", selection: "no" }, 0, 1, "win"],
+    [{ type: "oddEven", selection: "odd" }, 2, 1, "win"],
+    [{ type: "oddEven", selection: "even" }, 2, 0, "win"],
+    [{ type: "correctScore", homeGoals: 2, awayGoals: 1 }, 2, 1, "win"]
+  ];
+  for (const [descriptor, home, away, expected] of cases) {
+    const result = evaluateMarket(score(home, away), descriptor);
+    assert.equal(Object.entries(result.outcomes).find(([, p]) => p === 1)?.[0], expected,
+      JSON.stringify(descriptor));
+    const settled = settleMarketBet(descriptor, home, away, 2, 20);
+    assert.equal(settled.outcome, expected, JSON.stringify(descriptor));
+  }
+});
+
+test("market evaluation validates matrices, Asian line bounds and option ranges", () => {
+  assert.throws(() => evaluateMarket([], { type: "1x2", selection: "home" }), /non-empty rectangular/i);
+  assert.throws(() => evaluateMarket([[0.5], [0.2, 0.3]], { type: "1x2", selection: "home" }), /rectangular/i);
+  assert.throws(() => evaluateMarket([[0, 0]], { type: "1x2", selection: "home" }), /positive probability mass/i);
+  assert.throws(() => evaluateMarket([[1]], { type: "totalGoals", selection: "over", line: 20.25 }), /between -20 and 20/i);
+  assert.throws(() => evaluateAllMarkets([[1]], { correctScoreMaxGoals: 21 }), /0 to 20/i);
+});
+
+test("settlement rejects invalid actual scores, odds, stakes and unknown markets", () => {
+  const pick = { type: "1x2", selection: "home" };
+  assert.throws(() => settleMarketBet(pick, -1, 0, 2), /actual goals/i);
+  assert.throws(() => settleMarketBet(pick, 0.5, 0, 2), /actual goals/i);
+  assert.throws(() => settleMarketBet(pick, 0, 0, 1), /greater than 1/i);
+  assert.throws(() => settleMarketBet(pick, 0, 0, 2, 0), /stake/i);
+  assert.throws(() => settleMarketBet({ type: "unknown" }, 0, 0, 2), /unsupported market/i);
+});
+
+test("Asian settlement profit and return amount are correct for partial outcomes", () => {
+  const halfWin = settleMarketBet({ type: "totalGoals", selection: "under", line: 2.25 }, 1, 1, 2.4, 100);
+  assert.equal(halfWin.profit, 70);
+  assert.equal(halfWin.returnAmount, 170);
+  const halfLoss = settleMarketBet({ type: "handicap", team: "home", line: -0.25 }, 1, 1, 2.4, 100);
+  assert.equal(halfLoss.profit, -50);
+  assert.equal(halfLoss.returnAmount, 50);
+  const quarterPush = settleMarketBet({ type: "totalGoals", selection: "over", line: 2.25 }, 2, 0, 2.4, 100);
+  assert.equal(quarterPush.outcome, "halfLoss");
+  assert.equal(quarterPush.profit, -50);
+});
