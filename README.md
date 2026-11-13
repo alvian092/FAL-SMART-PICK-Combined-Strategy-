@@ -14,6 +14,8 @@ An Android-first Football Analytics Lab project. This repository starts with a s
 - Chronological Elo ratings across imported fixtures, with configurable K-factor/home advantage and a strict pre-match cutoff. Elo expected score is shown separately from match-win probability.
 - Multiclass temperature scaling for 1X2 probabilities, fitted by minimizing log loss on prior out-of-sample predictions.
 - Expanding-window walk-forward backtesting with strict calendar-date separation, per-team history gates, skipped-fixture reporting, raw/calibrated log loss, multiclass Brier score, and accuracy.
+- One-vs-rest 1X2 reliability diagrams and 10-bin calibration tables with ECE/MCE diagnostics.
+- Out-of-sample per-league scorecards for raw and calibrated log loss, Brier score, accuracy, and sample counts.
 - Node.js unit tests.
 - GitHub Actions workflow that tests, builds the web bundle, generates the Android project, assembles a Debug APK, verifies it exists, and uploads it as an artifact.
 
@@ -58,12 +60,12 @@ The GitHub Actions workflow performs this sequence on pushes to `main` and `deve
 1. Historical CSV import, validation, team/league selector, and H2H.
 2. Automatic lambda with home/away strength and opponent adjustment.
 3. Dixon-Coles low-score adjustment and chronological Elo ratings with regression tests (implemented).
-4. Temperature calibration and leakage-safe expanding walk-forward evaluation (implemented); reliability diagrams, calibration bins, and uncertainty intervals remain planned.
-4. All requested markets with correct Asian line settlement and fair odds.
-5. Combined Smart Pick ranking, uncertainty gates, and NO BET.
-6. Walk-forward backtesting, ROI, yield, CLV, drawdown, and calibration.
+4. Temperature calibration, leakage-safe walk-forward evaluation, reliability diagrams, calibration bins, and per-league diagnostics (implemented); uncertainty intervals remain planned.
+5. All requested markets with correct Asian line settlement and fair odds.
+6. Combined Smart Pick ranking, uncertainty gates, and NO BET.
+7. Walk-forward backtesting, ROI, yield, CLV, drawdown, and calibration.
 7. Live match state model and Android UX hardening.
-8. Release signing only after Debug is green and signing configuration is verified.
+9. Release signing only after Debug is green and signing configuration is verified.
 
 ## Important
 
