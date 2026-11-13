@@ -206,7 +206,65 @@ test("Asian settlement profit and return amount are correct for partial outcomes
   const halfLoss = settleMarketBet({ type: "handicap", team: "home", line: -0.25 }, 1, 1, 2.4, 100);
   assert.equal(halfLoss.profit, -50);
   assert.equal(halfLoss.returnAmount, 50);
-  const quarterPush = settleMarketBet({ type: "totalGoals", selection: "over", line: 2.25 }, 2, 0, 2.4, 100);
-  assert.equal(quarterPush.outcome, "halfLoss");
-  assert.equal(quarterPush.profit, -50);
+  const quarterHalfLoss = settleMarketBet({ type: "totalGoals", selection: "over", line: 2.25 }, 2, 0, 2.4, 100);
+  assert.equal(quarterHalfLoss.outcome, "halfLoss");
+  assert.equal(quarterHalfLoss.profit, -50);
+});
+
+
+test("market probabilities are invariant to positive matrix scaling", () => {
+  const matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+  const scaled = matrix.map((row) => row.map((value) => value * 37));
+  const descriptor = { type: "totalGoals", selection: "over", line: 2.25 };
+  const first = evaluateMarket(matrix, descriptor);
+  const second = evaluateMarket(scaled, descriptor);
+  for (const key of Object.keys(first.outcomes)) close(first.outcomes[key], second.outcomes[key]);
+  close(first.fairOdds, second.fairOdds);
+});
+
+test("quarter-line fair odds break even against the full settlement distribution", () => {
+  const matrix = [
+    [0.04, 0.06, 0.08, 0.05],
+    [0.07, 0.10, 0.12, 0.08],
+    [0.06, 0.11, 0.09, 0.05],
+    [0.03, 0.04, 0.02, 0.00]
+  ];
+  const descriptors = [
+    { type: "totalGoals", selection: "over", line: 2.25 },
+    { type: "totalGoals", selection: "under", line: 2.75 },
+    { type: "handicap", team: "home", line: -0.25 },
+    { type: "handicap", team: "away", line: 0.75 },
+    { type: "teamTotal", team: "home", selection: "over", line: 1.25 },
+    { type: "teamTotal", team: "away", selection: "under", line: 1.75 }
+  ];
+  for (const descriptor of descriptors) {
+    const priced = evaluateMarket(matrix, descriptor);
+    assert.ok(priced.fairOdds > 1, JSON.stringify(descriptor));
+    const atFair = evaluateMarket(matrix, descriptor, priced.fairOdds);
+    close(atFair.expectedValue, 0, 1e-9);
+  }
+});
+
+test("empty settlement summary reports undefined ROI rather than zero ROI", () => {
+  const summary = summarizeMarketBets([]);
+  assert.equal(summary.bets, 0);
+  assert.equal(summary.totalStake, 0);
+  assert.equal(summary.netProfit, 0);
+  assert.equal(summary.roi, null);
+  assert.equal(summary.averageProfitPerBet, null);
+});
+
+test("settlement return amount reconciles to stake plus net profit for every outcome", () => {
+  const cases = [
+    [{ type: "1x2", selection: "home" }, 2, 0, 2.1],
+    [{ type: "totalGoals", selection: "under", line: 2.25 }, 1, 1, 2.4],
+    [{ type: "totalGoals", selection: "over", line: 2 }, 1, 1, 1.9],
+    [{ type: "handicap", team: "home", line: -0.25 }, 1, 1, 2.2],
+    [{ type: "1x2", selection: "away" }, 2, 0, 3.1]
+  ];
+  for (const [descriptor, home, away, odds] of cases) {
+    const settled = settleMarketBet(descriptor, home, away, odds, 73);
+    close(settled.returnAmount, settled.stake + settled.profit);
+    assert.ok(settled.returnAmount >= 0);
+  }
 });
