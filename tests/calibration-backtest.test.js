@@ -6,7 +6,8 @@ import {
   walkForwardBacktest,
   calculateReliabilityBins,
   evaluatePerformanceByLeague,
-  estimateProbabilityIntervals
+  estimateProbabilityIntervals,
+  walkForwardPredictiveIntervalBacktest
 } from "../src/engine.js";
 
 const close = (a, b, tolerance = 1e-10) => assert.ok(Math.abs(a - b) <= tolerance, `${a} is not close to ${b}`);
@@ -154,4 +155,25 @@ test("bootstrap uncertainty intervals are deterministic, bounded, and pre-date o
   assert.ok(first.intervals.lambdaHome.lower >= 0 && first.intervals.lambdaHome.upper <= 8);
   assert.throws(() => estimateProbabilityIntervals(matches, "Alpha", "Beta", { ...options, cutoffDate: "2025-01-06" }), /at least 10/i);
   assert.throws(() => estimateProbabilityIntervals(matches, "Alpha", "Beta", { ...options, iterations: 10 }), /iterations/i);
+});
+
+test("posterior-predictive score intervals are deterministic and walk-forward coverage is pre-date only", () => {
+  const history = makeHistory(42);
+  const result = walkForwardPredictiveIntervalBacktest(history, {
+    minTrainingMatches: 10, minTeamAppearances: 5, calibrationMinSamples: 5,
+    intervalIterations: 50, confidenceLevel: 0.9
+  });
+  assert.ok(result.evaluated > 0);
+  assert.ok(result.predictions.every((row) => row.intervalCutoffDate === row.date));
+  for (const key of ["homeGoals", "awayGoals", "totalGoals", "goalDifference"]) {
+    const metric = result.coverage[key];
+    assert.ok(metric.sampleSize > 0);
+    assert.ok(metric.covered >= 0 && metric.covered <= metric.sampleSize);
+    assert.ok(metric.empiricalCoverage >= 0 && metric.empiricalCoverage <= 1);
+    assert.ok(metric.meanWidth >= 0);
+  }
+  const first = result.predictions[0];
+  assert.ok(first.predictiveIntervals.homeGoals.lower <= first.predictiveIntervals.homeGoals.upper);
+  assert.ok(first.predictiveIntervals.totalGoals.lower <= first.predictiveIntervals.totalGoals.upper);
+  assert.throws(() => walkForwardPredictiveIntervalBacktest(history, { intervalIterations: 10 }), /intervalIterations/i);
 });
