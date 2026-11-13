@@ -105,7 +105,9 @@ test("reliability bins report observed frequency, ECE and MCE for all 1X2 outcom
   assert.ok(result.home.expectedCalibrationError >= 0 && result.home.expectedCalibrationError <= 1);
   assert.ok(result.home.maximumCalibrationError >= 0 && result.home.maximumCalibrationError <= 1);
   assert.equal(result.home.bins[3].count, 1);
-  assert.equal(result.home.bins[3].observedRate, 1);
+  assert.equal(result.home.bins[3].observedRate, 0);
+  assert.equal(result.home.bins[4].count, 1);
+  assert.equal(result.home.bins[4].observedRate, 1);
   assert.throws(() => calculateReliabilityBins(rows, "unknown", 5), /probabilityKey/i);
   assert.throws(() => calculateReliabilityBins(rows, "raw", 1), /binCount/i);
 });
