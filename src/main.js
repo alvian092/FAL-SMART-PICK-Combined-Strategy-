@@ -154,6 +154,24 @@ function renderH2H() {
   ).join("") + (matches.length > 8 ? `<small class="muted">Menampilkan 8 dari ${matches.length} pertandingan.</small>` : "");
 }
 
+function syncSelectedTeams() {
+  const home = $("home-select").value;
+  const away = $("away-select").value;
+  if (!home || !away) {
+    $("lambda-status").textContent = "Pilih liga, lalu pilih tim kandang dan tim tandang. Setelah keduanya dipilih, Match Model akan terisi otomatis.";
+    return;
+  }
+  if (home === away) {
+    $("lambda-status").textContent = "Tim kandang dan tandang harus berbeda.";
+    return;
+  }
+  $("home").value = home;
+  $("away").value = away;
+  $("import-status").textContent = `Pilihan otomatis diterapkan: ${home} vs ${away}.`;
+  $("lambda-status").textContent = "Pasangan tim sudah tersambung ke Match Model. Hitung lambda otomatis untuk memakai riwayat masing-masing tim.";
+  render();
+}
+
 function showImportSummary(totalRows, validRows, errors) {
   $("import-summary").hidden = false;
   $("import-summary").textContent = `${validRows} valid · ${errors} ditolak · ${totalRows} total baris`;
@@ -192,12 +210,15 @@ $("csv-file").addEventListener("change", async (event) => {
 $("league-select").addEventListener("change", () => {
   setOptions($("home-select"), getHistoricalTeams(historicalMatches, $("league-select").value), "Pilih tim kandang");
   setOptions($("away-select"), getHistoricalTeams(historicalMatches, $("league-select").value), "Pilih tim tandang");
+  $("home").value = "";
+  $("away").value = "";
+  $("lambda-status").textContent = "Liga berubah. Pilih ulang tim kandang dan tandang.";
   $("home-select").disabled = false;
   $("away-select").disabled = false;
   renderH2H();
 });
-$("home-select").addEventListener("change", renderH2H);
-$("away-select").addEventListener("change", renderH2H);
+$("home-select").addEventListener("change", () => { renderH2H(); syncSelectedTeams(); });
+$("away-select").addEventListener("change", () => { renderH2H(); syncSelectedTeams(); });
 $("use-teams").addEventListener("click", () => {
   const home = $("home-select").value;
   const away = $("away-select").value;
@@ -275,8 +296,9 @@ $("run-backtest").addEventListener("click", () => {
   $("backtest-output").replaceChildren();
   try {
     if (!historicalMatches.length) throw new Error("Impor CSV historis terlebih dahulu.");
+    const minTrainingMatches = Math.min(30, Math.max(10, Math.floor(historicalMatches.length * 0.5)));
     const result = walkForwardBacktest(historicalMatches, {
-      minTrainingMatches: 30,
+      minTrainingMatches,
       minTeamAppearances: 5,
       calibrationMinSamples: 20,
       rho: Number($("rho").value)
@@ -289,7 +311,8 @@ $("run-backtest").addEventListener("click", () => {
     $("backtest-status").textContent =
       `Selesai · ${result.evaluated} prediksi out-of-sample · ${result.skippedCount} dilewati · ${result.totalValidFixtures} pertandingan valid. ` +
       (result.calibrationSamples ? `${result.calibrationSamples} prediksi memakai calibrator yang dilatih dari prediksi sebelumnya.` :
-        "Belum cukup prediksi terdahulu untuk mengaktifkan kalibrasi; hasil tetap memakai probabilitas mentah.");
+        "Belum cukup prediksi terdahulu untuk mengaktifkan kalibrasi; hasil tetap memakai probabilitas mentah.") +
+      ` Warm-up minimum: ${minTrainingMatches} pertandingan; minimal 5 penampilan per tim; kalibrasi membutuhkan 20 prediksi terdahulu. Sampel kecil bersifat eksploratif.`;
     const cards = (title, data) => data ? `
       <div class="backtest-group"><strong>${title} · n=${data.sampleSize}</strong>
         <div class="backtest-metrics">
