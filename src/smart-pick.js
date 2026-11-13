@@ -23,6 +23,7 @@ function validateOptions(options) {
       throw new RangeError(key + " must be between 0 and 1");
     }
   }
+  if (config.maxStakeFraction > 0.05) throw new RangeError("maxStakeFraction must not exceed the hard 5% bankroll cap");
   if (!Number.isFinite(config.minExpectedValue)) throw new RangeError("minExpectedValue must be finite");
   if (!Number.isFinite(config.minOdds) || config.minOdds <= 1) throw new RangeError("minOdds must be greater than 1");
   if (!Number.isFinite(config.maxOdds) || config.maxOdds < config.minOdds) throw new RangeError("maxOdds must be at least minOdds");
@@ -70,10 +71,11 @@ export function rankSmartPicks(matrix, candidates, options = {}) {
     if (stakeFraction < rawStakeFraction) reasons.push("Stake dibatasi oleh batas maksimum bankroll.");
     const eligible = blockingReasons.length === 0;
     const explanation = [
-      "EV " + (priced.expectedValue * 100).toFixed(2) + "%",
-      "probabilitas hasil positif " + (probability * 100).toFixed(1) + "%",
-      "fair odds " + (priced.fairOdds === null ? "—" : priced.fairOdds.toFixed(2)),
-      "stake " + (stakeFraction * 100).toFixed(2) + "% bankroll"
+      "EV " + (priced.expectedValue * 100).toFixed(2) + "% (minimum " + (config.minExpectedValue * 100).toFixed(2) + "%)",
+      "probabilitas hasil positif " + (probability * 100).toFixed(1) + "% (minimum " + (config.minProbability * 100).toFixed(1) + "%)",
+      "odds " + odds.toFixed(2) + " berada dalam rentang " + config.minOdds.toFixed(2) + "–" + config.maxOdds.toFixed(2),
+      "Kelly positif " + (priced.kellyFraction * 100).toFixed(2) + "%",
+      "stake fractional Kelly " + (stakeFraction * 100).toFixed(2) + "% bankroll"
     ];
     return {
       id, descriptor: candidate.descriptor, odds, eligible, reasons,
