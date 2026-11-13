@@ -125,7 +125,6 @@ export function parseHistoricalCsv(input) {
     matches.push({ date, league, season, homeTeam, awayTeam, homeGoals, awayGoals });
   }
 
-  if (!matches.length) throw new Error(`Tidak ada baris valid. ${errors.length} baris ditolak.`);
   return { matches, errors, totalRows: records.length - 1 };
 }
 
