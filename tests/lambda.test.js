@@ -1,4 +1,5 @@
-
+import test from "node:test";
+import assert from "node:assert/strict";
 import { estimateLambdas } from "../src/engine.js";
 
 function dateAt(day) {
