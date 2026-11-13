@@ -71,7 +71,7 @@ app.innerHTML = `
       <div id="market-status" class="import-status" role="status">Hitung probabilitas pertandingan untuk menampilkan seluruh pasar.</div>
       <div id="market-output" class="table-scroll"></div>
     </section>
-    <section class="panel backtest-panel">\n      <div class="section-heading"><div><p class="eyebrow">04 / MODEL VALIDATION</p><h2>Walk-forward backtest</h2></div><span class="tag">TIME ORDERED</span></div>\n      <p class="muted compact">Uji prediksi historis secara kronologis. Setiap pertandingan hanya diprediksi memakai data dari tanggal sebelumnya; kalibrasi hanya memakai prediksi out-of-sample yang lebih lama. Pertandingan yang datanya belum cukup akan dilewati dan dilaporkan.</p>\n      <button id="run-backtest" class="secondary">Jalankan walk-forward backtest</button>
+    <section class="panel backtest-panel">\n      <div class="section-heading"><div><p class="eyebrow">05 / MODEL VALIDATION</p><h2>Walk-forward backtest</h2></div><span class="tag">TIME ORDERED</span></div>\n      <p class="muted compact">Uji prediksi historis secara kronologis. Setiap pertandingan hanya diprediksi memakai data dari tanggal sebelumnya; kalibrasi hanya memakai prediksi out-of-sample yang lebih lama. Pertandingan yang datanya belum cukup akan dilewati dan dilaporkan.</p>\n      <button id="run-backtest" class="secondary">Jalankan walk-forward backtest</button>
       <button id="run-interval-backtest" class="secondary">Uji coverage uncertainty intervals</button>
       <p id="interval-backtest-status" class="import-status" role="status">Uji rentang skor prediktif terhadap hasil historis out-of-sample.</p>
       <div id="interval-backtest-output" class="backtest-output"></div>\n      <p id="backtest-status" class="import-status" role="status">Impor database CSV untuk mengevaluasi model.</p>\n      <div id="backtest-output" class="backtest-output"></div>\n    </section>\n    <section class="panel roadmap">
@@ -442,7 +442,7 @@ function renderMarkets(matrix) {
   const markets = evaluateAllMarkets(matrix);
   const typeLabel = (market) => ({
     "1x2": "1X2", doubleChance: "Double chance", totalGoals: "Total goals",
-    teamTotal: "Team total " + (market.team === "home" ? "home" : "away"),
+    teamTotal: "Team total " + (market.team === "home" ? "home" : "away"), btts: "BTTS",
     handicap: "Asian handicap " + (market.team === "home" ? "home" : "away"),
     oddEven: "Odd/even", correctScore: "Correct score"
   })[market.type];
