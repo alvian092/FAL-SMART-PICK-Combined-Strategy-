@@ -1,4 +1,5 @@
 import { scoreMatrix, matchProbabilities, fairOdds, expectedValue } from "./engine.js";
+import { parseHistoricalCsv, getHistoricalLeagues, getHistoricalTeams, getHeadToHead } from "./historical.js";
 import "./styles.css";
 
 const app = document.querySelector("#app");
@@ -13,7 +14,22 @@ app.innerHTML = `
     <section class="intro">
       <p class="eyebrow">FOOTBALL ANALYTICS LAB</p>
       <h1>Find the value.<br><span>Respect the probability.</span></h1>
-      <p class="muted">Analisis awal berbasis distribusi gol. Belum terhubung ke odds API atau data pertandingan otomatis.</p>
+      <p class="muted">Analisis probabilitas pertandingan. Data historis hanya berasal dari CSV yang kamu unggah; belum ada odds API atau data pertandingan otomatis.</p>
+    </section>
+    <section class="panel history-panel">
+      <div class="section-heading"><div><p class="eyebrow">HISTORICAL DATA</p><h2>Import database CSV</h2></div><span class="tag">LOCAL IMPORT</span></div>
+      <p class="muted compact">Format wajib: date, league, season, home_team, away_team, home_goals, away_goals. Tanggal YYYY-MM-DD, skor 0–30. Data tersimpan lokal di perangkat ini.</p>
+      <label class="file-label">Pilih file CSV<input id="csv-file" type="file" accept=".csv,text/csv"></label>
+      <p id="import-status" class="import-status" role="status">Belum ada data historis yang diimpor.</p>
+      <div id="import-summary" class="import-summary" hidden></div>
+      <div id="import-errors" class="import-errors" hidden></div>
+      <div class="selector-grid">
+        <label>Liga<select id="league-select" disabled><option value="">Impor CSV terlebih dahulu</option></select></label>
+        <label>Tim kandang<select id="home-select" disabled><option value="">Pilih liga dahulu</option></select></label>
+        <label>Tim tandang<select id="away-select" disabled><option value="">Pilih liga dahulu</option></select></label>
+      </div>
+      <button id="use-teams" class="secondary" disabled>Gunakan pilihan tim</button>
+      <div id="h2h-output" class="h2h-output"></div>
     </section>
     <section class="panel">
       <div class="section-heading"><div><p class="eyebrow">01 / MATCH MODEL</p><h2>Input pertandingan</h2></div><span class="tag">PRE-MATCH</span></div>
@@ -29,7 +45,7 @@ app.innerHTML = `
     <section class="panel">
       <div class="section-heading"><div><p class="eyebrow">02 / MODEL OUTPUT</p><h2 id="match-title">Home Team vs Away Team</h2></div><span class="tag">POISSON BASELINE</span></div>
       <div id="probabilities" class="metric-grid"></div>
-      <p class="notice">Probabilitas dihitung dari lambda yang dimasukkan secara manual. Model Dixon-Coles, kalibrasi, dan data historis belum diaktifkan.</p>
+      <p class="notice">Probabilitas dihitung dari lambda yang dimasukkan secara manual. Import historis saat ini untuk pemilihan tim dan H2H; automatic lambda belum diaktifkan.</p>
     </section>
     <section class="panel">
       <div class="section-heading"><div><p class="eyebrow">03 / VALUE CHECK</p><h2>Evaluasi odds 1X2</h2></div><span class="tag">MANUAL ODDS</span></div>
@@ -46,7 +62,7 @@ app.innerHTML = `
       <h2>Build in verified stages</h2>
       <ul>
         <li class="done">Foundation · Poisson probability · manual odds</li>
-        <li>Historical CSV import · team selector · H2H</li>
+        <li class="done">Historical CSV import · validation · league/team selector · H2H</li>
         <li>Dixon-Coles · Elo · automatic lambda</li>
         <li>All markets · fair odds · EV · Kelly</li>
         <li>Smart Pick ranking · walk-forward backtest</li>
@@ -60,6 +76,126 @@ app.innerHTML = `
 const $ = (id) => document.getElementById(id);
 const pct = (value) => `${(value * 100).toFixed(1)}%`;
 const num = (value) => Number(value).toFixed(2);
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+})[char]);
+
+let historicalMatches = [];
+let importErrors = [];
+
+try {
+  const saved = JSON.parse(localStorage.getItem("fal-historical-matches") || "[]");
+  if (Array.isArray(saved)) historicalMatches = saved.filter((match) =>
+    match && typeof match.date === "string" && typeof match.league === "string" &&
+    typeof match.homeTeam === "string" && typeof match.awayTeam === "string" &&
+    Number.isInteger(match.homeGoals) && Number.isInteger(match.awayGoals)
+  );
+} catch {
+  historicalMatches = [];
+}
+
+function setOptions(select, values, placeholder, selected = "") {
+  select.replaceChildren();
+  const first = document.createElement("option");
+  first.value = "";
+  first.textContent = placeholder;
+  select.append(first);
+  values.forEach((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    select.append(option);
+  });
+  if (values.includes(selected)) select.value = selected;
+}
+
+function updateTeamSelectors() {
+  const league = $("league-select").value;
+  const home = $("home-select").value;
+  const away = $("away-select").value;
+  const leagues = getHistoricalLeagues(historicalMatches);
+  setOptions($("league-select"), leagues, leagues.length ? "Pilih liga" : "Impor CSV terlebih dahulu", league);
+  const teams = getHistoricalTeams(historicalMatches, $("league-select").value);
+  setOptions($("home-select"), teams, teams.length ? "Pilih tim kandang" : "Pilih liga dahulu", home);
+  setOptions($("away-select"), teams, teams.length ? "Pilih tim tandang" : "Pilih liga dahulu", away);
+  $("league-select").disabled = leagues.length === 0;
+  $("home-select").disabled = teams.length === 0;
+  $("away-select").disabled = teams.length === 0;
+  $("use-teams").disabled = teams.length === 0;
+  renderH2H();
+}
+
+function renderH2H() {
+  const league = $("league-select").value;
+  const home = $("home-select").value;
+  const away = $("away-select").value;
+  const matches = getHeadToHead(historicalMatches, home, away, league);
+  const output = $("h2h-output");
+  if (!home || !away || home === away) {
+    output.textContent = "Pilih dua tim berbeda untuk melihat riwayat H2H dari data yang diimpor.";
+    return;
+  }
+  if (!matches.length) {
+    output.textContent = "Belum ada catatan H2H untuk pasangan tim ini pada liga yang dipilih.";
+    return;
+  }
+  output.innerHTML = `<strong>H2H · ${matches.length} pertandingan</strong>` + matches.slice(0, 8).map((match) =>
+    `<div class="h2h-row"><span>${escapeHtml(match.date)}</span><strong>${escapeHtml(match.homeTeam)} ${match.homeGoals}–${match.awayGoals} ${escapeHtml(match.awayTeam)}</strong><small>${escapeHtml(match.season)}</small></div>`
+  ).join("") + (matches.length > 8 ? `<small class="muted">Menampilkan 8 dari ${matches.length} pertandingan.</small>` : "");
+}
+
+function showImportSummary(totalRows, validRows, errors) {
+  $("import-summary").hidden = false;
+  $("import-summary").textContent = `${validRows} valid · ${errors} ditolak · ${totalRows} total baris`;
+}
+
+$("csv-file").addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  $("import-status").textContent = `Membaca ${file.name}…`;
+  $("import-errors").hidden = true;
+  try {
+    const result = parseHistoricalCsv(await file.text());
+    historicalMatches = result.matches;
+    importErrors = result.errors;
+    localStorage.setItem("fal-historical-matches", JSON.stringify(historicalMatches));
+    showImportSummary(result.totalRows, result.matches.length, result.errors.length);
+    $("import-status").textContent = `Berhasil mengimpor ${result.matches.length} pertandingan dari ${file.name}.`;
+    if (importErrors.length) {
+      $("import-errors").hidden = false;
+      $("import-errors").innerHTML = "<strong>Baris yang ditolak</strong>" + importErrors.slice(0, 8).map((item) =>
+        `<p>Baris ${item.line}: ${escapeHtml(item.message)}</p>`
+      ).join("") + (importErrors.length > 8 ? `<p>Dan ${importErrors.length - 8} kesalahan lainnya.</p>` : "");
+    }
+    updateTeamSelectors();
+  } catch (error) {
+    $("import-status").textContent = error.message;
+    $("import-summary").hidden = true;
+    $("import-errors").hidden = true;
+  }
+});
+
+$("league-select").addEventListener("change", () => {
+  setOptions($("home-select"), getHistoricalTeams(historicalMatches, $("league-select").value), "Pilih tim kandang");
+  setOptions($("away-select"), getHistoricalTeams(historicalMatches, $("league-select").value), "Pilih tim tandang");
+  $("home-select").disabled = false;
+  $("away-select").disabled = false;
+  renderH2H();
+});
+$("home-select").addEventListener("change", renderH2H);
+$("away-select").addEventListener("change", renderH2H);
+$("use-teams").addEventListener("click", () => {
+  const home = $("home-select").value;
+  const away = $("away-select").value;
+  if (!home || !away || home === away) {
+    $("import-status").textContent = "Pilih dua tim yang berbeda terlebih dahulu.";
+    return;
+  }
+  $("home").value = home;
+  $("away").value = away;
+  $("import-status").textContent = `Pilihan diterapkan: ${home} vs ${away}. Lambda masih perlu dihitung/diisi terpisah.`;
+  render();
+});
 
 function render() {
   try {
@@ -81,7 +217,7 @@ function render() {
     $("value-output").innerHTML = odds.map((odd, i) => {
       if (!Number.isFinite(odd) || odd <= 1) return "";
       const ev = expectedValue(values[i], odd);
-      return `<div class="value-row"><span>${labels[i]}</span><strong>${ev >= 0 ? "+" : ""}${pct(ev)}</strong><small>Model ${pct(values[i])} · Fair ${num(fairOdds(values[i]))} · Odds ${num(odd)}</small></div>`;
+      return `<div class="value-row"><span>${escapeHtml(labels[i])}</span><strong>${ev >= 0 ? "+" : ""}${pct(ev)}</strong><small>Model ${pct(values[i])} · Fair ${num(fairOdds(values[i]))} · Odds ${num(odd)}</small></div>`;
     }).join("");
   } catch (error) {
     $("error").textContent = error.message;
@@ -89,4 +225,9 @@ function render() {
 }
 $("analyze").addEventListener("click", render);
 ["home","away","lh","la","oh","od","oa"].forEach((id) => $(id).addEventListener("change", render));
+updateTeamSelectors();
+if (historicalMatches.length) {
+  $("import-status").textContent = `Memuat ${historicalMatches.length} pertandingan historis tersimpan di perangkat ini.`;
+  showImportSummary(historicalMatches.length, historicalMatches.length, 0);
+}
 render();
