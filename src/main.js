@@ -156,17 +156,21 @@ $("csv-file").addEventListener("change", async (event) => {
   $("import-errors").hidden = true;
   try {
     const result = parseHistoricalCsv(await file.text());
-    historicalMatches = result.matches;
     importErrors = result.errors;
-    localStorage.setItem("fal-historical-matches", JSON.stringify(historicalMatches));
     showImportSummary(result.totalRows, result.matches.length, result.errors.length);
-    $("import-status").textContent = `Berhasil mengimpor ${result.matches.length} pertandingan dari ${file.name}.`;
     if (importErrors.length) {
       $("import-errors").hidden = false;
       $("import-errors").innerHTML = "<strong>Baris yang ditolak</strong>" + importErrors.slice(0, 8).map((item) =>
         `<p>Baris ${item.line}: ${escapeHtml(item.message)}</p>`
       ).join("") + (importErrors.length > 8 ? `<p>Dan ${importErrors.length - 8} kesalahan lainnya.</p>` : "");
     }
+    if (!result.matches.length) {
+      $("import-status").textContent = `Tidak ada baris valid di ${file.name}; data historis sebelumnya tidak diubah.`;
+      return;
+    }
+    historicalMatches = result.matches;
+    localStorage.setItem("fal-historical-matches", JSON.stringify(historicalMatches));
+    $("import-status").textContent = `Berhasil mengimpor ${result.matches.length} pertandingan dari ${file.name}.`;
     updateTeamSelectors();
   } catch (error) {
     $("import-status").textContent = error.message;
