@@ -45,7 +45,7 @@ function parseCsv(text) {
 }
 
 function isValidDate(value) {
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
@@ -57,11 +57,11 @@ async function auditSource(source) {
   const csv = await response.text();
   const bytes = Buffer.from(csv, "utf8");
   const gitBlobSha = createHash("sha1").update(Buffer.concat([
-    Buffer.from(`blob ${bytes.length}\\0`), bytes
+    Buffer.from(`blob ${bytes.length}\0`), bytes
   ])).digest("hex");
   assert.equal(gitBlobSha, source.blobSha, `${source.gender}: pinned upstream blob changed or raw content was transformed`);
 
-  const parsed = parseCsv(csv.replace(/^\\uFEFF/, ""));
+  const parsed = parseCsv(csv.replace(/^\uFEFF/, ""));
   const header = parsed[0];
   assert.deepEqual(header, EXPECTED_HEADER, `${source.gender}: unexpected CSV schema`);
   const index = Object.fromEntries(header.map((name, i) => [name, i]));
@@ -91,7 +91,7 @@ async function auditSource(source) {
     if (date < firstDate) firstDate = date;
     if (date > lastDate) lastDate = date;
     for (const [side, score] of [["home", homeScore], ["away", awayScore]]) {
-      if (!/^\\d+$/.test(score) || !Number.isSafeInteger(Number(score)) || Number(score) < 0) {
+      if (!/^\d+$/.test(score) || !Number.isSafeInteger(Number(score)) || Number(score) < 0) {
         invalidScores.push({ line, side, value: score });
       } else if (Number(score) > 30) {
         over30.push({ line, date, home, away, side, score: Number(score), tournament });
@@ -101,7 +101,7 @@ async function auditSource(source) {
     const key = [date, home, away, tournament].join("|");
     if (seen.has(key)) duplicates.push({ key, firstLine: seen.get(key), duplicateLine: line });
     else seen.set(key, line);
-    const exact = row.join("\\u001f");
+    const exact = row.join("\u001f");
     if (exactRows.has(exact)) throw new Error(`${source.gender}: exact duplicate CSV row at line ${line}`);
     exactRows.add(exact);
     competitions.set(tournament, (competitions.get(tournament) ?? 0) + 1);
