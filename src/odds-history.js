@@ -108,7 +108,7 @@ export function parseHistoricalOddsCsv(input) {
       const parseTimestamp = (value, field) => {
         if (!value) return null;
         const parsed = Date.parse(value);
-        if (!Number.isFinite(parsed) || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$/.test(value)) {
+        if (!Number.isFinite(parsed) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
           throw new RangeError(field + " must be an ISO-8601 timestamp with timezone");
         }
         return new Date(parsed).toISOString();
