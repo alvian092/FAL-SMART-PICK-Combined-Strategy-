@@ -23,12 +23,12 @@ test("converts Football-Data results to the exact FAL historical schema", () => 
 
 test("extracts opening and closing 1X2 quotes but never fabricates UTC timestamps", () => {
   const result = parseFootballDataCsv(csv, { division: "E0", seasonCode: "2526" });
-  assert.equal(result.odds.length, 6)
+  assert.equal(result.odds.length, 6);
   assert.equal(result.odds[0].bookmaker, "Bet365");
   assert.equal(result.odds[0].odds, 1.35);
   assert.equal(result.odds[0].closingOdds, 1.3);
   assert.equal(result.summary.timestampedEntryQuotes, 0);
-  assert.match(result.oddsCsv.split("\n")[0], /entry_timing_quality,closing_timing_quality$/);
+  assert.match(result.oddsCsv.split("\n")[0], /^date,league,home_team,away_team,market,selection,odds,closing_odds,bookmaker$/);
 });
 
 test("supports BOM, quoted team names and two-digit dates", () => {
