@@ -124,6 +124,11 @@ async function auditSource(source) {
   assert.equal(friendly, source.expected.friendly);
   assert.equal(friendlyOther, source.expected.friendlyOther);
   assert.equal(duplicates.length, source.expected.duplicateKeys);
+  if (source.gender === "men") {
+    assert.equal(duplicates[0].firstScore, "2-1");
+    assert.equal(duplicates[0].duplicateScore, "1-2");
+    assert.equal(duplicates[0].scoreConflict, true);
+  }
   assert.equal(over30.length, source.expected.over30);
   assert.equal(invalidDates.length, 0);
   assert.equal(invalidScores.length, 0);
