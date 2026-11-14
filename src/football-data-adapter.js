@@ -50,11 +50,9 @@ function dateToIso(value) {
 
 function seasonFromCode(code) {
   if (!/^\d{4}$/.test(code)) return "";
-  const start = 2000 + Number(code.slice(0, 2));
-  const end = 2000 + Number(code.slice(2, 4));
-  return `${start}-${end}`;
+  const toYear = (part) => Number(part) <= 69 ? 2000 + Number(part) : 1900 + Number(part);
+  return `${toYear(code.slice(0, 2))}-${toYear(code.slice(2, 4))}`;
 }
-
 function csvCell(value) {
   const text = String(value ?? "");
   return /[",\r\n]/.test(text) ? '"' + text.replaceAll('"', '""') + '"' : text;
@@ -95,6 +93,9 @@ export function parseFootballDataCsv(input, options = {}) {
   const season = String(options.season ?? seasonFromCode(options.seasonCode ?? "")).trim();
   if (!league || !season) throw new Error("League and season are required; provide division/league and season/seasonCode");
   const matches = [], odds = [], errors = [];
+  const bookmaker = String(options.bookmaker ?? "Bet365");
+  const oddsSource = ({ Bet365: { prefix: "B365", closePrefix: "B365C" }, Pinnacle: { prefix: "PS", closePrefix: "PSC" }, "Market Average": { prefix: "Avg", closePrefix: "AvgC" } })[bookmaker];
+  if (!oddsSource) throw new Error("bookmaker must be Bet365, Pinnacle, or Market Average");
   const seen = new Set();
   raw.slice(1).forEach((row, i) => {
     const line = i + 2;
@@ -116,40 +117,33 @@ export function parseFootballDataCsv(input, options = {}) {
     seen.add(key);
     matches.push({ date, league, season, homeTeam, awayTeam, homeGoals, awayGoals });
 
-    const oddsSets = [
-      { prefix: "B365", closePrefix: "B365C", bookmaker: "Bet365" },
-      { prefix: "PS", closePrefix: "PSC", bookmaker: "Pinnacle" },
-      { prefix: "Avg", closePrefix: "AvgC", bookmaker: "Market Average" }
+    const prices = [
+      ["home", validOdds(get(row, oddsSource.prefix + "H"))],
+      ["draw", validOdds(get(row, oddsSource.prefix + "D"))],
+      ["away", validOdds(get(row, oddsSource.prefix + "A"))]
     ];
-    for (const source of oddsSets) {
-      const prices = [
-        ["home", validOdds(get(row, source.prefix + "H"))],
-        ["draw", validOdds(get(row, source.prefix + "D"))],
-        ["away", validOdds(get(row, source.prefix + "A"))]
-      ];
-      const closing = [
-        validOdds(get(row, source.closePrefix + "H")),
-        validOdds(get(row, source.closePrefix + "D")),
-        validOdds(get(row, source.closePrefix + "A"))
-      ];
-      prices.forEach(([selection, price], j) => {
-        if (price === null) return;
-        odds.push({
-          date, league, season, homeTeam, awayTeam, market: "1x2", selection,
-          odds: price, closingOdds: closing[j], bookmaker: source.bookmaker,
-          entryTimingQuality: "source_pre_match_time_not_provided",
-          closingTimingQuality: closing[j] === null ? "missing" : "source_closing_time_not_provided"
-        });
+    const closing = [
+      validOdds(get(row, oddsSource.closePrefix + "H")),
+      validOdds(get(row, oddsSource.closePrefix + "D")),
+      validOdds(get(row, oddsSource.closePrefix + "A"))
+    ];
+    prices.forEach(([selection, price], j) => {
+      if (price === null) return;
+      odds.push({
+        date, league, season, homeTeam, awayTeam, market: "1x2", selection,
+        odds: price, closingOdds: closing[j], bookmaker,
+        entryTimingQuality: "source_pre_match_time_not_provided",
+        closingTimingQuality: closing[j] === null ? "missing" : "source_closing_time_not_provided"
       });
-    }
+    });
   });
   const resultsCsv = [
     "date,league,season,home_team,away_team,home_goals,away_goals",
     ...matches.map(m => [m.date,m.league,m.season,m.homeTeam,m.awayTeam,m.homeGoals,m.awayGoals].map(csvCell).join(","))
   ].join("\n");
   const oddsCsv = [
-    "date,league,season,home_team,away_team,bookmaker,market,selection,odds,closing_odds,entry_timing_quality,closing_timing_quality",
-    ...odds.map(o => [o.date,o.league,o.season,o.homeTeam,o.awayTeam,o.bookmaker,o.market,o.selection,o.odds,o.closingOdds ?? "",o.entryTimingQuality,o.closingTimingQuality].map(csvCell).join(","))
+    "date,league,home_team,away_team,market,selection,odds,closing_odds,bookmaker",
+    ...odds.map(o => [o.date,o.league,o.homeTeam,o.awayTeam,o.market,o.selection,o.odds,o.closingOdds ?? "",o.bookmaker].map(csvCell).join(","))
   ].join("\n");
   return {
     matches, odds, errors, league, season,
