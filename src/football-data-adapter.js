@@ -102,9 +102,6 @@ export function parseFootballDataCsv(input, options = {}) {
   const bookmaker = String(options.bookmaker ?? "Bet365");
   const oddsSource = ({ Bet365: { prefix: "B365", closePrefix: "B365C" }, Pinnacle: { prefix: "PS", closePrefix: "PSC" }, "Market Average": { prefix: "Avg", closePrefix: "AvgC" } })[bookmaker];
   if (!oddsSource) throw new Error("bookmaker must be Bet365, Pinnacle, or Market Average");
-  const bookmaker = String(options.bookmaker ?? "Bet365");
-  const oddsSource = ({ Bet365: { prefix: "B365", closePrefix: "B365C" }, Pinnacle: { prefix: "PS", closePrefix: "PSC" }, "Market Average": { prefix: "Avg", closePrefix: "AvgC" } })[bookmaker];
-  if (!oddsSource) throw new Error("bookmaker must be Bet365, Pinnacle, or Market Average");
   const seen = new Set();
   raw.slice(1).forEach((row, i) => {
     const line = i + 2;
