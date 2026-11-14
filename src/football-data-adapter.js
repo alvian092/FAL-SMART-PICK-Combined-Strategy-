@@ -90,8 +90,14 @@ export function parseFootballDataCsv(input, options = {}) {
   };
   const div = String(options.division ?? get([], "Div") ?? "").trim().toUpperCase();
   const league = String(options.league ?? LEAGUES[div] ?? div).trim();
-  const season = String(options.season ?? seasonFromCode(options.seasonCode ?? "")).trim();
-  if (!league || !season) throw new Error("League and season are required; provide division/league and season/seasonCode");
+  const defaultSeason = String(options.season ?? seasonFromCode(options.seasonCode ?? "")).trim();
+  if (!league) throw new Error("League is required; provide division or league");
+  const normalizeSeason = (value) => {
+    const raw = String(value ?? "").trim();
+    if (/^\\d{4}$/.test(raw)) return seasonFromCode(raw);
+    const match = /^(\\d{4})[-/](\\d{4})$/.exec(raw);
+    return match ? match[1] + "-" + match[2] : raw;
+  };
   const matches = [], odds = [], errors = [];
   const bookmaker = String(options.bookmaker ?? "Bet365");
   const oddsSource = ({ Bet365: { prefix: "B365", closePrefix: "B365C" }, Pinnacle: { prefix: "PS", closePrefix: "PSC" }, "Market Average": { prefix: "Avg", closePrefix: "AvgC" } })[bookmaker];
@@ -103,13 +109,14 @@ export function parseFootballDataCsv(input, options = {}) {
   raw.slice(1).forEach((row, i) => {
     const line = i + 2;
     const date = dateToIso(get(row, "Date"));
+    const season = normalizeSeason(defaultSeason || get(row, "Season"));
     const homeTeam = get(row, "HomeTeam").trim();
     const awayTeam = get(row, "AwayTeam").trim();
     const homeGoals = numberInRange(get(row, "FTHG"), 0, 30);
     const awayGoals = numberInRange(get(row, "FTAG"), 0, 30);
-    if (!date || !homeTeam || !awayTeam || homeTeam.toLocaleLowerCase() === awayTeam.toLocaleLowerCase() ||
+    if (!date || !season || !homeTeam || !awayTeam || homeTeam.toLocaleLowerCase() === awayTeam.toLocaleLowerCase() ||
         homeGoals === null || awayGoals === null) {
-      errors.push({ row: line, message: "invalid date, team names, or full-time score; fixture excluded" });
+      errors.push({ row: line, message: "invalid date, season, team names, or full-time score; fixture excluded" });
       return;
     }
     const key = [date, league.toLocaleLowerCase(), season, homeTeam.toLocaleLowerCase(), awayTeam.toLocaleLowerCase()].join("|");
