@@ -5,6 +5,7 @@ import { walkForwardMarketBacktest } from "./market-backtest.js";
 import { rankSmartPicks } from "./smart-pick.js";
 import { walkForwardSmartPickBacktest } from "./smart-pick-backtest.js";
 import { parseHistoricalOddsCsv } from "./odds-history.js";
+import { parseFootballDataCsv } from "./football-data-adapter.js";
 import "./styles.css";
 
 const app = document.querySelector("#app");
@@ -25,6 +26,17 @@ app.innerHTML = `
       <div class="section-heading"><div><p class="eyebrow">HISTORICAL DATA</p><h2>Import database CSV</h2></div><span class="tag">LOCAL IMPORT</span></div>
       <p class="muted compact">Format wajib: date, league, season, home_team, away_team, home_goals, away_goals. Tanggal YYYY-MM-DD, skor 0–30. Data tersimpan lokal di perangkat ini.</p>
       <label class="file-label">Pilih file CSV<input id="csv-file" type="file" accept=".csv,text/csv"></label>
+      <div class="import-summary">
+        <strong>Import Football-Data per liga dan musim</strong>
+        <p class="muted compact">Upload CSV asli satu per satu. Hasil dan odds akan digabung ke database lokal, bukan menimpa musim sebelumnya.</p>
+        <div class="fields">
+          <label>Kode divisi<input id="football-data-division" value="E0" maxlength="8"></label>
+          <label>Kode musim<input id="football-data-season" value="2526" maxlength="4" placeholder="2526"></label>
+          <label>Bookmaker odds<select id="football-data-bookmaker"><option>Bet365</option><option>Pinnacle</option><option>Market Average</option></select></label>
+        </div>
+        <label class="file-label">Pilih CSV Football-Data<input id="football-data-file" type="file" accept=".csv,text/csv"></label>
+        <p id="football-data-status" class="import-status" role="status">Belum ada file Football-Data yang diimpor.</p>
+      </div>
       <p id="import-status" class="import-status" role="status">Belum ada data historis yang diimpor.</p>
       <div id="import-summary" class="import-summary" hidden></div>
       <div id="import-errors" class="import-errors" hidden></div>
@@ -93,6 +105,8 @@ app.innerHTML = `
       <div class="section-heading"><div><p class="eyebrow">07 / SMART PICK VALIDATION</p><h2>Walk-forward · ROI · CLV · Drawdown</h2></div><span class="tag">HISTORICAL ODDS</span></div>
       <p class="muted compact">Impor odds historis saat entry dan odds penutupan untuk market yang sama. Model hanya memakai pertandingan sebelum tanggal fixture. Satu kandidat terbaik dipilih per pertandingan; bila tidak lolos filter hasilnya NO BET.</p>
       <label class="file-label">Pilih CSV odds historis<input id="smart-odds-file" type="file" accept=".csv,text/csv"></label>
+      <label class="check-row"><input id="smart-allow-date-only" type="checkbox"> Izinkan odds pra-pertandingan tanpa timestamp per kutipan (ROI saja; CLV tidak dihitung)</label>
+      <p class="notice">Jika dicentang, odds pembukaan Football-Data dapat dipakai untuk ROI meski timestamp UTC per kutipan tidak tersedia. CLV bertimestamp tetap kosong. Jangan gunakan opsi ini untuk mengklaim audit waktu yang presisi.</p>
       <p id="smart-odds-status" class="import-status" role="status">Belum ada odds historis diimpor. CSV wajib memuat date, home_team, away_team, market, selection, odds; closing_odds opsional.</p>
       <div class="fields">
         <label>Bankroll awal<input id="smart-backtest-bankroll" type="number" min="1" step="any" value="1000"></label>
@@ -266,6 +280,42 @@ $("csv-file").addEventListener("change", async (event) => {
     $("import-status").textContent = error.message;
     $("import-summary").hidden = true;
     $("import-errors").hidden = true;
+  }
+});
+
+$("football-data-file").addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  $("football-data-status").textContent = "Membaca dan memvalidasi CSV Football-Data…";
+  try {
+    const bytes = await file.arrayBuffer();
+    const sourceText = new TextDecoder("windows-1252").decode(bytes);
+    const converted = parseFootballDataCsv(sourceText, {
+      division: $("football-data-division").value,
+      seasonCode: $("football-data-season").value,
+      bookmaker: $("football-data-bookmaker").value
+    });
+    const parsedResults = parseHistoricalCsv(converted.resultsCsv);
+    const matchKey = (m) => [m.date,m.league,m.season,m.homeTeam,m.awayTeam].map(v => String(v).normalize("NFKC").trim().toLocaleLowerCase()).join("|");
+    const mergedMatches = new Map(historicalMatches.map(m => [matchKey(m),m]));
+    parsedResults.matches.forEach(m => mergedMatches.set(matchKey(m),m));
+    historicalMatches = [...mergedMatches.values()].sort((x,y) => x.date.localeCompare(y.date));
+    localStorage.setItem("fal-historical-matches", JSON.stringify(historicalMatches));
+    const parsedOdds = parseHistoricalOddsCsv(converted.oddsCsv);
+    const oddsKey = (r) => [r.date,r.league,r.homeTeam,r.awayTeam,r.descriptor.type,r.descriptor.selection ?? "",r.odds].join("|");
+    const mergedOdds = new Map(historicalOdds.map(r => [oddsKey(r),r]));
+    parsedOdds.rows.forEach(r => mergedOdds.set(oddsKey(r),r));
+    historicalOdds = [...mergedOdds.values()];
+    localStorage.setItem("fal-historical-odds", JSON.stringify(historicalOdds));
+    updateTeamSelectors();
+    $("football-data-status").textContent = file.name + " · " + converted.summary.validMatches +
+      " pertandingan valid · " + converted.summary.oddsQuotes + " odds quotes · " +
+      converted.summary.rejectedRows + " baris ditolak · database sekarang " +
+      historicalMatches.length + " pertandingan dan " + historicalOdds.length + " odds. Entry/closing tanpa timestamp UTC per kutipan.";
+    $("import-status").textContent = "Database Football-Data berhasil digabung dengan riwayat FAL.";
+    $("smart-odds-status").textContent = "Odds Football-Data tersimpan · pilih opsi date-only jika ingin menguji ROI; CLV timestamp tidak tersedia.";
+  } catch (error) {
+    $("football-data-status").textContent = error.message;
   }
 });
 
@@ -592,10 +642,12 @@ $("run-smart-backtest").addEventListener("click", () => {
           normalize(row.awayTeam) === normalize(fixture.awayTeam) &&
           (!fixtureLeague || (row.league && normalize(row.league) === fixtureLeague))
         );
-        const eligible = matching.filter(row =>
-          row.kickoffUtc && row.oddsTimestampUtc &&
-          Date.parse(row.oddsTimestampUtc) < Date.parse(row.kickoffUtc)
-        );
+        const allowDateOnly = $("smart-allow-date-only").checked;
+        const eligible = matching.filter(row => {
+          const hasEntryTime = row.kickoffUtc && row.oddsTimestampUtc;
+          if (hasEntryTime) return Date.parse(row.oddsTimestampUtc) < Date.parse(row.kickoffUtc);
+          return allowDateOnly && !row.kickoffUtc && !row.oddsTimestampUtc;
+        });
         const byDescriptor = new Map();
         for (const row of eligible) {
           const d = row.descriptor;
