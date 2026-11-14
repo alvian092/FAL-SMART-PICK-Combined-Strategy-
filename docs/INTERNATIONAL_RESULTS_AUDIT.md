@@ -73,3 +73,8 @@ The script pins both upstream commits and Git blob SHAs, verifies schema and row
 **FIFA/competition recognition mapping: pending authoritative evidence.**  
 **Youth coverage: incomplete / not established.**  
 **Production import: not approved until duplicate and 31-goal exceptions are quarantined, taxonomy is reviewed, and the exact export is matched or the pinned upstream files are adopted explicitly.**
+
+
+## Odds data rights note
+
+Football-Data.co.uk free CSVs are not used by the production FAL pipeline or fetched repeatedly by CI. Its published fair-use policy limits free data to personal betting/academic research and light downloads (up to twice weekly), and explicitly excludes commercial or AI/model-training projects without an appropriate paid agreement. The earlier 760-fixture EPL audit is retained only as a historical one-off technical test; its ROI/CLV output is not a production backtest and must not be used as a performance claim. Prefer a provider whose written terms expressly permit the intended FAL model and app use.
