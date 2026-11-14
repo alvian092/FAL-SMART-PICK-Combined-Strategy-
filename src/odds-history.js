@@ -196,8 +196,7 @@ export function parseHistoricalOddsCsv(input) {
         sourceMatchId: record.source_match_id || "",
         descriptor: descriptorFrom(record), odds, closingOdds,
         kickoffUtc, oddsTimestampUtc, closingOddsTimestampUtc,
-        timingVerified: Boolean(kickoffUtc && oddsTimestampUtc &&
-          (!closingOdds || closingOddsTimestampUtc))
+        clvTimingVerified: Boolean(closingOdds !== null && kickoffUtc && oddsTimestampUtc && closingOddsTimestampUtc)
       };
       const key = duplicateKey(row);
       if (seen.has(key)) throw new RangeError("duplicate fixture-market-bookmaker-timestamp row");
