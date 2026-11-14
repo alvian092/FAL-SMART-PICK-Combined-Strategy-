@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseFootballDataCsv } from "../src/football-data-adapter.js";
+import { parseHistoricalCsv } from "../src/historical.js";
+import { parseHistoricalOddsCsv } from "../src/odds-history.js";
 
 const csv = [
   "Div,Date,HomeTeam,AwayTeam,FTHG,FTAG,B365H,B365D,B365A,B365CH,B365CD,B365CA",
@@ -48,4 +50,25 @@ test("derives pre-2000 season labels correctly and reads row-level Season values
   ].join("\\n");
   const result = parseFootballDataCsv(input, { division: "SC0" });
   assert.equal(result.matches[0].season, "1993-1994");
+});
+
+test("adapter outputs round-trip through both native FAL CSV importers", () => {
+  const converted = parseFootballDataCsv(csv, { division: "E0", seasonCode: "2526" });
+  const results = parseHistoricalCsv(converted.resultsCsv);
+  const odds = parseHistoricalOddsCsv(converted.oddsCsv);
+  assert.equal(results.matches.length, 2);
+  assert.equal(odds.rows.length, 6);
+  assert.ok(odds.rows.every(row => row.kickoffUtc === null && row.oddsTimestampUtc === null));
+  assert.ok(odds.rows.every(row => row.closingOdds !== null && row.closingOddsTimestampUtc === null));
+});
+
+test("maps 1993/94 and 1999/00 season codes without shifting them into 2000s", () => {
+  const source = [
+    "Div,Date,HomeTeam,AwayTeam,FTHG,FTAG",
+    "E0,01/08/93,Alpha,Beta,1,0"
+  ].join("\\n");
+  const old = parseFootballDataCsv(source, { division: "E0", seasonCode: "9394" });
+  assert.equal(old.matches[0].season, "1993-1994");
+  const millennium = parseFootballDataCsv(source, { division: "E0", seasonCode: "9900" });
+  assert.equal(millennium.matches[0].season, "1999-2000");
 });
