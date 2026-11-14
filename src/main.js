@@ -584,26 +584,31 @@ $("run-smart-backtest").addEventListener("click", () => {
       minTeamAppearances: 5,
       pickOptions,
       candidateProvider: (fixture) => {
-        const normalize = (value) => String(value ?? "").normalize("NFKC").trim().replace(/\\s+/g, " ").toLocaleLowerCase();
+        const normalize = (value) => String(value ?? "").normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+        const fixtureLeague = normalize(fixture.league);
         const matching = historicalOdds.filter(row =>
           row.date === fixture.date &&
           normalize(row.homeTeam) === normalize(fixture.homeTeam) &&
           normalize(row.awayTeam) === normalize(fixture.awayTeam) &&
-          (!row.league || normalize(row.league) === normalize(fixture.league))
+          (!fixtureLeague || (row.league && normalize(row.league) === fixtureLeague))
         );
         const eligible = matching.filter(row =>
           row.kickoffUtc && row.oddsTimestampUtc &&
           Date.parse(row.oddsTimestampUtc) < Date.parse(row.kickoffUtc)
         );
-        const seen = new Set();
-        return eligible.filter(row => {
+        const byDescriptor = new Map();
+        for (const row of eligible) {
           const d = row.descriptor;
           const key = [d.type, d.selection ?? "", d.team ?? "", d.line ?? "",
             d.homeGoals ?? "", d.awayGoals ?? ""].join("|");
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        }).map((row, index) => ({
+          const prior = byDescriptor.get(key);
+          if (prior && (prior.odds !== row.odds ||
+              (prior.closingOdds ?? null) !== (row.closingOdds ?? null))) {
+            throw new Error("conflicting duplicate odds quote for market " + key);
+          }
+          if (!prior) byDescriptor.set(key, row);
+        }
+        return [...byDescriptor.values()].map((row, index) => ({
           id: "historical-" + index,
           descriptor: row.descriptor,
           odds: row.odds,
