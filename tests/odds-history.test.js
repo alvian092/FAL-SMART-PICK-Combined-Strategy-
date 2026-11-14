@@ -12,7 +12,7 @@ test("imports historical odds and closing odds with market descriptors", () => {
   assert.deepEqual(result.rows[0].descriptor, { type: "totalGoals", selection: "over", line: 2.5 });
   assert.equal(result.rows[0].odds, 2.05);
   assert.equal(result.rows[0].closingOdds, 1.95);
-  assert.equal(result.rows[0].timingVerified, false);
+  assert.equal(result.rows[0].clvTimingVerified, false);
 });
 
 test("supports CRLF, BOM, quoted team names and optional closing prices", () => {
@@ -98,7 +98,7 @@ test("parses timezone-aware timestamps and marks CLV timing verified only with b
   assert.equal(parsed.rows[0].kickoffUtc, "2025-01-01T20:00:00.000Z");
   assert.equal(parsed.rows[0].oddsTimestampUtc, "2025-01-01T12:00:00.000Z");
   assert.equal(parsed.rows[0].closingOddsTimestampUtc, "2025-01-01T19:50:00.000Z");
-  assert.equal(parsed.rows[0].timingVerified, true);
+  assert.equal(parsed.rows[0].clvTimingVerified, true);
 
   const lateEntry = timedHeader +
     "\n2025-01-01,L,A,B,1x2,home,,,,,2.1,,2025-01-01T20:00:00Z,2025-01-01T20:01:00Z,";
@@ -124,7 +124,7 @@ test("rejects timestamps without timezone, invalid calendar dates and untimed cl
   const parsed = parseHistoricalOddsCsv(untimedClose);
   assert.equal(parsed.rows.length, 1);
   assert.equal(parsed.rows[0].closingOddsTimestampUtc, null);
-  assert.equal(parsed.rows[0].timingVerified, false);
+  assert.equal(parsed.rows[0].clvTimingVerified, false);
 });
 
 test("rejects empty numeric fields instead of coercing them to zero", () => {
