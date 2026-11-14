@@ -42,6 +42,9 @@ jobs:
       - name: Run engine tests
         run: npm test
 
+      - name: Audit real Football-Data CSV and run walk-forward backtest
+        run: npm run audit:football-data
+
       - name: Build web application
         run: npm run build
 
