@@ -96,6 +96,9 @@ export function parseFootballDataCsv(input, options = {}) {
   const bookmaker = String(options.bookmaker ?? "Bet365");
   const oddsSource = ({ Bet365: { prefix: "B365", closePrefix: "B365C" }, Pinnacle: { prefix: "PS", closePrefix: "PSC" }, "Market Average": { prefix: "Avg", closePrefix: "AvgC" } })[bookmaker];
   if (!oddsSource) throw new Error("bookmaker must be Bet365, Pinnacle, or Market Average");
+  const bookmaker = String(options.bookmaker ?? "Bet365");
+  const oddsSource = ({ Bet365: { prefix: "B365", closePrefix: "B365C" }, Pinnacle: { prefix: "PS", closePrefix: "PSC" }, "Market Average": { prefix: "Avg", closePrefix: "AvgC" } })[bookmaker];
+  if (!oddsSource) throw new Error("bookmaker must be Bet365, Pinnacle, or Market Average");
   const seen = new Set();
   raw.slice(1).forEach((row, i) => {
     const line = i + 2;
@@ -118,6 +121,43 @@ export function parseFootballDataCsv(input, options = {}) {
     matches.push({ date, league, season, homeTeam, awayTeam, homeGoals, awayGoals });
 
     const prices = [
+      ["home", validOdds(get(row, oddsSource.prefix + "H"))],
+      ["draw", validOdds(get(row, oddsSource.prefix + "D"))],
+      ["away", validOdds(get(row, oddsSource.prefix + "A"))]
+    ];
+    const closing = [
+      validOdds(get(row, oddsSource.closePrefix + "H")),
+      validOdds(get(row, oddsSource.closePrefix + "D")),
+      validOdds(get(row, oddsSource.closePrefix + "A"))
+    ];
+    prices.forEach(([selection, price], j) => {
+      if (price === null) return;
+      odds.push({
+        date, league, season, homeTeam, awayTeam, market: "1x2", selection,
+        odds: price, closingOdds: closing[j], bookmaker,
+        entryTimingQuality: "source_pre_match_time_not_provided",
+        closingTimingQuality: closing[j] === null ? "missing" : "source_closing_time_not_provided"
+      });
+    });
+  });
+  const resultsCsv = [
+    "date,league,season,home_team,away_team,home_goals,away_goals",
+    ...matches.map(m => [m.date,m.league,m.season,m.homeTeam,m.awayTeam,m.homeGoals,m.awayGoals].map(csvCell).join(","))
+  ].join("\n");
+  const oddsCsv = [
+    "date,league,home_team,away_team,market,selection,odds,closing_odds,bookmaker",
+    ...odds.map(o => [o.date,o.league,o.homeTeam,o.awayTeam,o.market,o.selection,o.odds,o.closingOdds ?? "",o.bookmaker].map(csvCell).join(","))
+  ].join("\n");
+  return {
+    matches, odds, errors, league, season,
+    resultsCsv, oddsCsv,
+    summary: {
+      sourceRows: raw.length - 1, validMatches: matches.length, rejectedRows: errors.length,
+      oddsQuotes: odds.length, matchesWithOdds: new Set(odds.map(o => [o.date,o.homeTeam,o.awayTeam].join("|"))).size,
+      timestampedEntryQuotes: 0, timestampedClosingQuotes: 0
+    }
+  };
+}    const prices = [
       ["home", validOdds(get(row, oddsSource.prefix + "H"))],
       ["draw", validOdds(get(row, oddsSource.prefix + "D"))],
       ["away", validOdds(get(row, oddsSource.prefix + "A"))]
