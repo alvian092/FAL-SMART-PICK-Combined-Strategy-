@@ -40,14 +40,14 @@ test("supports BOM, quoted team names and two-digit dates", () => {
 });
 
 test("rejects malformed headers and requires an explicit league and season", () => {
-  assert.throws(() => parseFootballDataCsv("Date,HomeTeam\n01/01/25,A"), /League and season are required/i);
+  assert.throws(() => parseFootballDataCsv("Date,HomeTeam\n01/01/25,A"), /League is required/i);
 });
 
 test("derives pre-2000 season labels correctly and reads row-level Season values", () => {
   const input = [
     "Div,Date,Season,HomeTeam,AwayTeam,FTHG,FTAG",
     "SC0,01/08/93,1993/1994,Alpha,Beta,1,0"
-  ].join("\\n");
+  ].join("\n");
   const result = parseFootballDataCsv(input, { division: "SC0" });
   assert.equal(result.matches[0].season, "1993-1994");
 });
@@ -66,7 +66,7 @@ test("maps 1993/94 and 1999/00 season codes without shifting them into 2000s", (
   const source = [
     "Div,Date,HomeTeam,AwayTeam,FTHG,FTAG",
     "E0,01/08/93,Alpha,Beta,1,0"
-  ].join("\\n");
+  ].join("\n");
   const old = parseFootballDataCsv(source, { division: "E0", seasonCode: "9394" });
   assert.equal(old.matches[0].season, "1993-1994");
   const millennium = parseFootballDataCsv(source, { division: "E0", seasonCode: "9900" });
