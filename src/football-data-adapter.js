@@ -94,8 +94,8 @@ export function parseFootballDataCsv(input, options = {}) {
   if (!league) throw new Error("League is required; provide division or league");
   const normalizeSeason = (value) => {
     const raw = String(value ?? "").trim();
-    if (/^\\d{4}$/.test(raw)) return seasonFromCode(raw);
-    const match = /^(\\d{4})[-/](\\d{4})$/.exec(raw);
+    if (/^\d{4}$/.test(raw)) return seasonFromCode(raw);
+    const match = /^(\d{4})[-/](\d{4})$/.exec(raw);
     return match ? match[1] + "-" + match[2] : raw;
   };
   const matches = [], odds = [], errors = [];
