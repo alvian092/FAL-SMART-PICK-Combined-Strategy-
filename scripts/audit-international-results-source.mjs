@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 
+// Reproducible audit of the upstream men's senior international results snapshot.
 const SOURCE_COMMIT = "b0948cb558c927c357db4067eac5b37b96d0e4bb";
 const EXPECTED_GIT_BLOB_SHA = "9999a4b380b16189825884a8dab4dc869c847f72";
 const URL = `https://raw.githubusercontent.com/martj42/international_results/${SOURCE_COMMIT}/results.csv`;
