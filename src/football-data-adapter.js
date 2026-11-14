@@ -153,7 +153,7 @@ export function parseFootballDataCsv(input, options = {}) {
     ...odds.map(o => [o.date,o.league,o.homeTeam,o.awayTeam,o.market,o.selection,o.odds,o.closingOdds ?? "",o.bookmaker].map(csvCell).join(","))
   ].join("\n");
   return {
-    matches, odds, errors, league, season,
+    matches, odds, errors, league, season: defaultSeason || "row-level",
     resultsCsv, oddsCsv,
     summary: {
       sourceRows: raw.length - 1, validMatches: matches.length, rejectedRows: errors.length,
