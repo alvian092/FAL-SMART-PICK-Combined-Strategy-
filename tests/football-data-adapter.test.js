@@ -40,3 +40,12 @@ test("supports BOM, quoted team names and two-digit dates", () => {
 test("rejects malformed headers and requires an explicit league and season", () => {
   assert.throws(() => parseFootballDataCsv("Date,HomeTeam\n01/01/25,A"), /League and season are required/i);
 });
+
+test("derives pre-2000 season labels correctly and reads row-level Season values", () => {
+  const input = [
+    "Div,Date,Season,HomeTeam,AwayTeam,FTHG,FTAG",
+    "SC0,01/08/93,1993/1994,Alpha,Beta,1,0"
+  ].join("\\n");
+  const result = parseFootballDataCsv(input, { division: "SC0" });
+  assert.equal(result.matches[0].season, "1993-1994");
+});
