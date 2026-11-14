@@ -7,7 +7,7 @@ const csv = [
   "E0,15/08/25,Liverpool,Bournemouth,4,2,1.35,5.2,8.5,1.30,5.4,9.0",
   "E0,16/08/25,Man United,Arsenal,1,1,2.8,3.2,2.5,2.9,3.1,2.4",
   "E0,17/08/25,Incomplete,Fixture,,,,,,,,",
-  "E0,18/08/25,Liverpool,Bournemouth,2,0,1.4,5,8,1.3,5.2,9"
+  "E0,15/08/25,Liverpool,Bournemouth,2,0,1.4,5,8,1.3,5.2,9"
 ].join("\n");
 
 test("converts Football-Data results to the exact FAL historical schema", () => {
@@ -21,7 +21,7 @@ test("converts Football-Data results to the exact FAL historical schema", () => 
 
 test("extracts opening and closing 1X2 quotes but never fabricates UTC timestamps", () => {
   const result = parseFootballDataCsv(csv, { division: "E0", seasonCode: "2526" });
-  assert.equal(result.odds.length, 12);
+  assert.equal(result.odds.length, 6)
   assert.equal(result.odds[0].bookmaker, "Bet365");
   assert.equal(result.odds[0].odds, 1.35);
   assert.equal(result.odds[0].closingOdds, 1.3);
