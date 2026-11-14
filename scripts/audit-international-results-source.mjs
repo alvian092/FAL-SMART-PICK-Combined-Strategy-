@@ -99,8 +99,10 @@ async function auditSource(source) {
     }
     if (!["TRUE", "FALSE"].includes(row[index.neutral])) invalidNeutral.push({ line, value: row[index.neutral] });
     const key = [date, home, away, tournament].join("|");
-    if (seen.has(key)) duplicates.push({ key, firstLine: seen.get(key), duplicateLine: line });
-    else seen.set(key, line);
+    if (seen.has(key)) {
+      const first = seen.get(key);
+      duplicates.push({ key, firstLine: first.line, duplicateLine: line, firstScore: `${first.homeScore}-${first.awayScore}`, duplicateScore: `${homeScore}-${awayScore}`, scoreConflict: first.homeScore !== homeScore || first.awayScore !== awayScore });
+    } else seen.set(key, { line, homeScore, awayScore });
     const exact = row.join("\u001f");
     if (exactRows.has(exact)) throw new Error(`${source.gender}: exact duplicate CSV row at line ${line}`);
     exactRows.add(exact);
@@ -108,9 +110,10 @@ async function auditSource(source) {
   }
 
   const friendly = rows.filter(row => row[index.tournament].toLowerCase() === "friendly").length;
-  const friendlyOther = [...competitions.entries()]
+  const friendlyOtherLabels = [...competitions.entries()]
     .filter(([name]) => /friend/i.test(name) && name.toLowerCase() !== "friendly")
-    .reduce((sum, [, count]) => sum + count, 0);
+    .map(([name, count]) => ({ name, count }));
+  const friendlyOther = friendlyOtherLabels.reduce((sum, item) => sum + item.count, 0);
   const olympic = rows.filter(row => /olympic/i.test(row[index.tournament])).length;
   const youthLabels = [...competitions.keys()].filter(name => /u[- ]?(17|19|20|23)|youth|junior/i.test(name));
 
@@ -137,7 +140,7 @@ async function auditSource(source) {
     rows: rows.length,
     dateRange: { first: firstDate, last: lastDate },
     competitionLabels: competitions.size,
-    friendly: { exactFriendly: friendly, otherLabelsContainingFriend: friendlyOther },
+    friendly: { exactFriendly: friendly, otherLabelsContainingFriend: friendlyOther, otherLabels: friendlyOtherLabels },
     duplicateFixtureKeys: duplicates,
     invalidDates: invalidDates.length,
     invalidScores: invalidScores.length,
